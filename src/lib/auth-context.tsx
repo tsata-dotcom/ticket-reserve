@@ -85,7 +85,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       setUser(session?.user ?? null);
       if (session?.user) {
-        await fetchProfile(session.user.id);
+        const existingProfile = await fetchProfile(session.user.id);
+        if (!existingProfile) {
+          const meta = session.user.user_metadata;
+          await ensureProfile(
+            session.user.id,
+            meta?.display_name || session.user.email || '',
+            session.user.email || '',
+            meta?.phone || '',
+          );
+        }
       } else {
         setProfile(null);
       }
@@ -100,8 +109,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (error) return { error: 'メールアドレスまたはパスワードが正しくありません' };
 
       if (data.user) {
-        // プロフィールがなければ取得を試みる（メール確認後の初回ログイン等）
-        await fetchProfile(data.user.id);
+        // プロフィールを取得し、なければuser_metadataから自動作成（メール確認後の初回ログイン等）
+        const existingProfile = await fetchProfile(data.user.id);
+        if (!existingProfile) {
+          const meta = data.user.user_metadata;
+          const profileResult = await ensureProfile(
+            data.user.id,
+            meta?.display_name || email,
+            email,
+            meta?.phone || '',
+          );
+          if (profileResult.error) {
+            console.error('ログイン時プロフィール作成エラー:', profileResult.error);
+          }
+        }
       }
 
       return { error: null };
@@ -112,7 +133,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signUp = async (email: string, password: string, name: string, phone: string): Promise<AuthResult> => {
     try {
-      const { data, error } = await supabase.auth.signUp({ email, password });
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            display_name: name,
+            phone: phone,
+          },
+        },
+      });
       if (error) {
         if (error.message.includes('already registered') || error.message.includes('already been registered')) {
           return { error: 'このメールアドレスは既に登録されています' };
@@ -129,6 +159,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (data.user && data.session) {
         const profileResult = await ensureProfile(data.user.id, name, email, phone);
         if (profileResult.error) {
+          console.error('プロフィール作成エラー:', profileResult.error);
           return { error: profileResult.error };
         }
       }

@@ -45,14 +45,31 @@ export async function POST(request: NextRequest) {
     const { visit_date, time_slot, ticket_count, tour_type, unit_price, total_amount } = body;
 
     // Get customer profile
-    const { data: profile } = await supabase
+    let { data: profile } = await supabase
       .from('customer_profiles')
       .select('*')
       .eq('user_id', user.id)
       .single();
 
+    // プロフィールがなければuser_metadataから自動作成
     if (!profile) {
-      return NextResponse.json({ error: 'プロフィールが見つかりません' }, { status: 400 });
+      const meta = user.user_metadata;
+      const { data: newProfile, error: profileError } = await supabase
+        .from('customer_profiles')
+        .insert({
+          user_id: user.id,
+          display_name: meta?.display_name || user.email || '',
+          email: user.email || '',
+          phone: meta?.phone || '',
+        })
+        .select()
+        .single();
+
+      if (profileError || !newProfile) {
+        console.error('プロフィール自動作成エラー:', profileError);
+        return NextResponse.json({ error: 'プロフィールの作成に失敗しました。再度ログインしてください。' }, { status: 400 });
+      }
+      profile = newProfile;
     }
 
     const orderNo = await generateOrderNo(visit_date);
