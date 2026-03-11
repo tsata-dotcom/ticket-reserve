@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/lib/auth-context';
 
 interface LoginFormProps {
@@ -14,6 +14,20 @@ export default function LoginForm({ onSuccess, onSwitchToRegister }: LoginFormPr
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // 10秒タイムアウトで自動解除
+  useEffect(() => {
+    if (loading) {
+      timeoutRef.current = setTimeout(() => {
+        setLoading(false);
+        setError('処理がタイムアウトしました。もう一度お試しください。');
+      }, 10000);
+    }
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    };
+  }, [loading]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -21,16 +35,21 @@ export default function LoginForm({ onSuccess, onSwitchToRegister }: LoginFormPr
     setLoading(true);
 
     try {
+      console.log('Login: starting signIn for', email);
       const result = await signIn(email, password);
+      console.log('Login: signIn result', { error: result.error });
+
       if (result.error) {
         setError(result.error);
       } else {
         onSuccess();
       }
-    } catch {
+    } catch (e) {
+      console.error('Login: unexpected error', e);
       setError('ログインに失敗しました。もう一度お試しください。');
     } finally {
       setLoading(false);
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
     }
   };
 

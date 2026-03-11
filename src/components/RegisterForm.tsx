@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/lib/auth-context';
 
 interface RegisterFormProps {
@@ -18,6 +18,20 @@ export default function RegisterForm({ onSuccess, onSwitchToLogin }: RegisterFor
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [emailConfirmation, setEmailConfirmation] = useState(false);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // 10秒タイムアウトで自動解除
+  useEffect(() => {
+    if (loading) {
+      timeoutRef.current = setTimeout(() => {
+        setLoading(false);
+        setError('処理がタイムアウトしました。もう一度お試しください。');
+      }, 10000);
+    }
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    };
+  }, [loading]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -27,7 +41,12 @@ export default function RegisterForm({ onSuccess, onSwitchToLogin }: RegisterFor
 
     try {
       const name = `${lastName} ${firstName}`;
+      console.log('Register: starting signUp for', email);
+
       const result = await signUp(email, password, name, phone);
+
+      console.log('Register: signUp result', { error: result.error, needsEmailConfirmation: result.needsEmailConfirmation });
+
       if (result.error) {
         setError(result.error);
       } else if (result.needsEmailConfirmation) {
@@ -35,10 +54,12 @@ export default function RegisterForm({ onSuccess, onSwitchToLogin }: RegisterFor
       } else {
         onSuccess();
       }
-    } catch {
+    } catch (e) {
+      console.error('Register: unexpected error', e);
       setError('会員登録に失敗しました。もう一度お試しください。');
     } finally {
       setLoading(false);
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
     }
   };
 

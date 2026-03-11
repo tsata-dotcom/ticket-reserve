@@ -6,6 +6,11 @@ import Link from 'next/link';
 export default function Header() {
   const { user, profile, signOut } = useAuth();
 
+  const displayName = profile?.display_name
+    || user?.user_metadata?.display_name
+    || user?.email
+    || '';
+
   return (
     <header className="sticky top-0 z-50 bg-white border-b border-gray-200 shadow-sm">
       <div className="max-w-[800px] mx-auto px-4 h-14 flex items-center justify-between">
@@ -18,14 +23,14 @@ export default function Header() {
         </Link>
 
         <div className="flex items-center gap-3">
-          {user && profile ? (
+          {user ? (
             <>
-              <Link href="/mypage" className="text-sm text-gray-700 hover:text-primary">
-                {profile.display_name} 様
+              <Link href="/mypage" className="text-sm text-gray-700 hover:text-primary truncate max-w-[120px]">
+                {displayName} 様
               </Link>
               <button
                 onClick={signOut}
-                className="text-sm text-gray-500 hover:text-gray-700 border border-gray-300 rounded px-3 py-1"
+                className="text-sm text-gray-500 hover:text-gray-700 border border-gray-300 rounded px-3 py-1 whitespace-nowrap"
               >
                 ログアウト
               </button>

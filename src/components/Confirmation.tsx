@@ -21,23 +21,42 @@ export default function Confirmation({ tour, selectedDate, timeSlot, ticketCount
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
+  // プロフィールまたはuser_metadataからユーザー情報を取得
+  const displayName = profile?.display_name
+    || user?.user_metadata?.display_name
+    || user?.email
+    || '';
+  const displayEmail = profile?.email || user?.email || '';
+
   const dateObj = new Date(selectedDate + 'T00:00:00');
   const dateLabel = `${dateObj.getFullYear()}年${dateObj.getMonth() + 1}月${dateObj.getDate()}日`;
   const timeSlotLabel = timeSlot === 'morning' ? '午前の部（10:00〜11:30）' : '午後の部（14:00〜15:30）';
 
   useEffect(() => {
     const checkFirstTime = async () => {
-      if (!user) return;
+      if (!user) {
+        setLoading(false);
+        return;
+      }
 
-      const { data } = await supabase
-        .from('reservations')
-        .select('id')
-        .eq('customer_id', user.id)
-        .eq('total_amount', 0)
-        .eq('status', 'reserved')
-        .eq('checked_in', true);
+      try {
+        const { data, error: fetchError } = await supabase
+          .from('reservations')
+          .select('id')
+          .eq('customer_id', user.id)
+          .eq('total_amount', 0)
+          .eq('status', 'reserved')
+          .eq('checked_in', true);
 
-      setIsFirstTime(!data || data.length === 0);
+        if (fetchError) {
+          console.error('checkFirstTime error:', fetchError);
+        }
+
+        setIsFirstTime(!data || data.length === 0);
+      } catch (e) {
+        console.error('checkFirstTime unexpected error:', e);
+        setIsFirstTime(true);
+      }
       setLoading(false);
     };
     checkFirstTime();
@@ -58,6 +77,8 @@ export default function Confirmation({ tour, selectedDate, timeSlot, ticketCount
         return;
       }
 
+      console.log('Reserve: sending request');
+
       const res = await fetch('/api/reserve', {
         method: 'POST',
         headers: {
@@ -75,6 +96,8 @@ export default function Confirmation({ tour, selectedDate, timeSlot, ticketCount
       });
 
       const data = await res.json();
+      console.log('Reserve: response', { ok: res.ok, data });
+
       if (!res.ok) {
         setError(data.error || '予約に失敗しました');
         setSubmitting(false);
@@ -82,7 +105,8 @@ export default function Confirmation({ tour, selectedDate, timeSlot, ticketCount
       }
 
       onComplete(data.reservation.order_no);
-    } catch {
+    } catch (e) {
+      console.error('Reserve: unexpected error', e);
       setError('予約処理中にエラーが発生しました');
       setSubmitting(false);
     }
@@ -129,11 +153,11 @@ export default function Confirmation({ tour, selectedDate, timeSlot, ticketCount
         </div>
         <div className="flex justify-between border-b border-gray-100 pb-3">
           <span className="text-gray-500">お名前</span>
-          <span className="font-bold">{profile?.display_name}</span>
+          <span className="font-bold">{displayName}</span>
         </div>
         <div className="flex justify-between">
           <span className="text-gray-500">メール</span>
-          <span className="font-bold text-sm">{profile?.email}</span>
+          <span className="font-bold text-sm">{displayEmail}</span>
         </div>
       </div>
 

@@ -14,7 +14,7 @@ import Confirmation from '@/components/Confirmation';
 import Completion from '@/components/Completion';
 
 function ReservationFlow() {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
   const [step, setStep] = useState(0);
   const [selectedTour, setSelectedTour] = useState<TourType | null>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
@@ -25,6 +25,14 @@ function ReservationFlow() {
 
   const stepRef = useRef<HTMLDivElement>(null);
   const dateButtonRef = useRef<HTMLDivElement>(null);
+
+  // ステップ遷移バリデーション: ステップ3（予約確認）は認証必須
+  useEffect(() => {
+    if (step === 3 && !user && !loading) {
+      console.log('Step validation: user not logged in, redirecting to step 2');
+      setStep(2);
+    }
+  }, [step, user, loading]);
 
   useEffect(() => {
     if (stepRef.current && step > 0) {
@@ -45,6 +53,7 @@ function ReservationFlow() {
   const handleTimeSlotNext = (slot: 'morning' | 'afternoon', count: number) => {
     setTimeSlot(slot);
     setTicketCount(count);
+    // ログイン済みならステップ3（予約確認）へ、未ログインならステップ2（ログイン）へ
     if (user) {
       setStep(3);
     } else {
@@ -53,6 +62,7 @@ function ReservationFlow() {
   };
 
   const handleLoginSuccess = () => {
+    // ログイン/登録成功 → ステップ3（予約確認）へ
     setStep(3);
   };
 
@@ -152,8 +162,8 @@ function ReservationFlow() {
             </div>
           )}
 
-          {/* STEP 3: Confirmation */}
-          {step === 3 && tour && selectedDate && timeSlot && (
+          {/* STEP 3: Confirmation (認証必須) */}
+          {step === 3 && tour && selectedDate && timeSlot && user && (
             <Confirmation
               tour={tour}
               selectedDate={selectedDate}
