@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import QRCode from 'qrcode';
+import { TOURS } from '@/lib/types';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -42,7 +43,26 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { visit_date, time_slot, ticket_count, tour_type, unit_price, total_amount } = body;
+    const { visit_date, time_slot, ticket_count, tour_type } = body;
+
+    // サーバー側で初回無料判定（クライアントの値を信用しない）
+    const { data: existingFreeReservations, error: checkError } = await supabase
+      .from('reservations')
+      .select('id')
+      .eq('customer_id', user.id)
+      .eq('total_amount', 0)
+      .eq('status', 'reserved')
+      .limit(1);
+
+    if (checkError) {
+      console.error('First-time check error:', checkError);
+    }
+
+    const isFirstTime = !existingFreeReservations || existingFreeReservations.length === 0;
+    const tourInfo = TOURS.find(t => t.name === tour_type);
+    const tourPrice = tourInfo?.price || 0;
+    const unit_price = isFirstTime ? 0 : tourPrice;
+    const total_amount = unit_price * ticket_count;
 
     // Get customer profile
     const { data: existingProfile, error: profileFetchError } = await supabase
@@ -74,7 +94,6 @@ export async function POST(request: NextRequest) {
 
       if (profileError || !newProfile) {
         console.error('プロフィール自動作成エラー:', profileError);
-        // プロフィール作成失敗でもuser情報から直接予約を作成
         profile = {
           display_name: meta?.display_name || user.email || '',
           email: user.email || '',
@@ -139,7 +158,7 @@ export async function POST(request: NextRequest) {
         </div>
       `;
 
-      await fetch('https://api.resend.com/emails', {
+      const emailRes = await fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
@@ -159,6 +178,23 @@ export async function POST(request: NextRequest) {
           ],
         }),
       });
+
+      const emailResult = await emailRes.json();
+      console.log('Email send result:', { status: emailRes.status, result: emailResult });
+
+      if (emailRes.ok) {
+        // メール送信成功 → qr_sent を更新
+        const { error: updateError } = await supabase
+          .from('reservations')
+          .update({ qr_sent: true, qr_sent_at: new Date().toISOString() })
+          .eq('id', reservation.id);
+
+        if (updateError) {
+          console.error('qr_sent update error:', updateError);
+        }
+      } else {
+        console.error('Email send failed:', emailResult);
+      }
     } catch (emailError) {
       console.error('Email send error:', emailError);
       // Don't fail the reservation if email fails

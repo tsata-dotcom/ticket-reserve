@@ -38,7 +38,7 @@ function MyPageContent() {
   }, [user]);
 
   const handleCancel = async (id: string) => {
-    if (!confirm('この予約をキャンセルしますか？')) return;
+    if (!confirm('この予約をキャンセルしますか？キャンセル後、同じ日時で再予約が可能です。')) return;
 
     setCancellingId(id);
     const { data: { session } } = await supabase.auth.getSession();
@@ -57,6 +57,7 @@ function MyPageContent() {
       setReservations(prev =>
         prev.map(r => r.id === id ? { ...r, status: 'cancelled' } : r)
       );
+      alert('予約をキャンセルしました。枠が空きましたので、再度ご予約いただけます。');
     }
     setCancellingId(null);
   };

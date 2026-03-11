@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { TourInfo } from '@/lib/types';
 import QRCode from 'qrcode';
 
@@ -62,12 +63,20 @@ export default function Completion({ tour, selectedDate, timeSlot, ticketCount, 
         </div>
       </div>
 
-      <button
-        onClick={onReset}
-        className="mt-8 py-3 px-8 bg-primary text-white rounded-xl font-bold text-lg hover:bg-primary-dark transition-colors min-h-[48px]"
-      >
-        トップに戻る
-      </button>
+      <div className="mt-8 flex flex-col gap-3 items-center">
+        <Link
+          href="/mypage"
+          className="py-3 px-8 bg-primary text-white rounded-xl font-bold text-lg hover:bg-primary-dark transition-colors min-h-[48px] text-center"
+        >
+          予約履歴を見る
+        </Link>
+        <button
+          onClick={onReset}
+          className="py-3 px-8 border-2 border-gray-300 rounded-xl text-gray-600 font-bold text-lg hover:bg-gray-50 transition-colors min-h-[48px]"
+        >
+          トップに戻る
+        </button>
+      </div>
     </div>
   );
 }

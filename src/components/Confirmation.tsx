@@ -46,7 +46,7 @@ export default function Confirmation({ tour, selectedDate, timeSlot, ticketCount
           .eq('customer_id', user.id)
           .eq('total_amount', 0)
           .eq('status', 'reserved')
-          .eq('checked_in', true);
+          .limit(1);
 
         if (fetchError) {
           console.error('checkFirstTime error:', fetchError);
@@ -113,7 +113,7 @@ export default function Confirmation({ tour, selectedDate, timeSlot, ticketCount
   };
 
   const handlePayment = () => {
-    alert('決済機能は準備中です');
+    alert('決済機能は現在準備中です。恐れ入りますが、お電話にてお問い合わせください。');
   };
 
   if (loading) {
