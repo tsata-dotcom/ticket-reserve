@@ -20,13 +20,18 @@ export default function LoginForm({ onSuccess, onSwitchToRegister }: LoginFormPr
     setError('');
     setLoading(true);
 
-    const result = await signIn(email, password);
-    if (result.error) {
-      setError('メールアドレスまたはパスワードが正しくありません');
-    } else {
-      onSuccess();
+    try {
+      const result = await signIn(email, password);
+      if (result.error) {
+        setError(result.error);
+      } else {
+        onSuccess();
+      }
+    } catch {
+      setError('ログインに失敗しました。もう一度お試しください。');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   return (
@@ -35,7 +40,16 @@ export default function LoginForm({ onSuccess, onSwitchToRegister }: LoginFormPr
 
       <form onSubmit={handleSubmit} className="space-y-4 max-w-md mx-auto">
         {error && (
-          <div className="p-3 bg-red-50 text-red-600 rounded-lg text-sm">{error}</div>
+          <div className="p-3 bg-red-50 text-red-600 rounded-lg text-sm flex items-start justify-between">
+            <span>{error}</span>
+            <button
+              type="button"
+              onClick={() => setError('')}
+              className="ml-2 text-red-400 hover:text-red-600 flex-shrink-0"
+            >
+              &times;
+            </button>
+          </div>
         )}
 
         <div>
@@ -65,9 +79,17 @@ export default function LoginForm({ onSuccess, onSwitchToRegister }: LoginFormPr
         <button
           type="submit"
           disabled={loading}
-          className="w-full py-3 bg-primary text-white rounded-xl font-bold text-lg hover:bg-primary-dark transition-colors disabled:opacity-50 min-h-[48px]"
+          className="w-full py-3 bg-primary text-white rounded-xl font-bold text-lg hover:bg-primary-dark transition-colors disabled:opacity-50 min-h-[48px] flex items-center justify-center gap-2"
         >
-          {loading ? 'ログイン中...' : 'ログインして予約に進む'}
+          {loading ? (
+            <>
+              <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              ログイン中...
+            </>
+          ) : 'ログインして予約に進む'}
         </button>
       </form>
 
