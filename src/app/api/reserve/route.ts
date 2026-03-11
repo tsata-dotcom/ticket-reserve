@@ -45,31 +45,44 @@ export async function POST(request: NextRequest) {
     const { visit_date, time_slot, ticket_count, tour_type, unit_price, total_amount } = body;
 
     // Get customer profile
-    let { data: profile } = await supabase
+    const { data: existingProfile, error: profileFetchError } = await supabase
       .from('customer_profiles')
       .select('*')
       .eq('user_id', user.id)
       .single();
 
+    if (profileFetchError) {
+      console.error('Profile fetch error:', profileFetchError);
+    }
+
+    let profile = existingProfile;
+
     // プロフィールがなければuser_metadataから自動作成
     if (!profile) {
+      console.log('Profile not found, creating from user_metadata for user:', user.id);
       const meta = user.user_metadata;
       const { data: newProfile, error: profileError } = await supabase
         .from('customer_profiles')
-        .insert({
+        .upsert({
           user_id: user.id,
           display_name: meta?.display_name || user.email || '',
           email: user.email || '',
           phone: meta?.phone || '',
-        })
+        }, { onConflict: 'user_id' })
         .select()
         .single();
 
       if (profileError || !newProfile) {
         console.error('プロフィール自動作成エラー:', profileError);
-        return NextResponse.json({ error: 'プロフィールの作成に失敗しました。再度ログインしてください。' }, { status: 400 });
+        // プロフィール作成失敗でもuser情報から直接予約を作成
+        profile = {
+          display_name: meta?.display_name || user.email || '',
+          email: user.email || '',
+          phone: meta?.phone || '',
+        };
+      } else {
+        profile = newProfile;
       }
-      profile = newProfile;
     }
 
     const orderNo = await generateOrderNo(visit_date);
