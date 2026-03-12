@@ -6,10 +6,15 @@ import { supabase } from './supabase';
 import { User } from '@supabase/supabase-js';
 import { CustomerProfile, FutureshopMemberInfo } from './types';
 
-interface MagicLinkResult {
+interface OtpResult {
   success: boolean;
-  needsEmailConfirmation?: boolean;
+  otpSent?: boolean;
   notFsMember?: boolean;
+  error?: string;
+}
+
+interface VerifyResult {
+  success: boolean;
   error?: string;
 }
 
@@ -18,7 +23,8 @@ interface AuthContextType {
   profile: CustomerProfile | null;
   futureshopMember: FutureshopMemberInfo | null;
   loading: boolean;
-  signInWithMagicLink: (email: string) => Promise<MagicLinkResult>;
+  sendOtp: (email: string) => Promise<OtpResult>;
+  verifyOtp: (email: string, token: string) => Promise<VerifyResult>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 }
@@ -187,7 +193,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
-  const signInWithMagicLink = async (email: string): Promise<MagicLinkResult> => {
+  const sendOtp = async (email: string): Promise<OtpResult> => {
     try {
       // 1. Futureshop会員チェック
       const checkRes = await fetch('/api/futureshop/member-check', {
@@ -206,26 +212,54 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { success: false, notFsMember: true };
       }
 
-      // 2. マジックリンク送信
+      // 2. OTPコード送信（emailRedirectToを指定しない → コード入力方式）
       const { error } = await supabase.auth.signInWithOtp({
         email,
         options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback`,
+          shouldCreateUser: true,
         },
       });
 
       if (error) {
-        console.error('signInWithOtp error:', error);
+        console.error('sendOtp error:', error);
         if (error.message.includes('rate') || error.message.includes('limit')) {
           return { success: false, error: 'メール送信の制限に達しました。60秒後に再度お試しください。' };
         }
         return { success: false, error: 'メール送信に失敗しました。もう一度お試しください。' };
       }
 
-      return { success: true, needsEmailConfirmation: true };
+      return { success: true, otpSent: true };
     } catch (e) {
-      console.error('signInWithMagicLink error:', e);
+      console.error('sendOtp error:', e);
       return { success: false, error: e instanceof Error ? e.message : 'ログインに失敗しました' };
+    }
+  };
+
+  const verifyOtp = async (email: string, token: string): Promise<VerifyResult> => {
+    try {
+      const { data, error } = await supabase.auth.verifyOtp({
+        email,
+        token,
+        type: 'email',
+      });
+
+      if (error) {
+        console.error('verifyOtp error:', error);
+        if (error.message.includes('expired')) {
+          return { success: false, error: '認証コードの有効期限が切れました。再送信してください。' };
+        }
+        return { success: false, error: '認証コードが正しくありません。' };
+      }
+
+      if (data.user) {
+        setUser(data.user);
+        await handleUserLogin(data.user);
+      }
+
+      return { success: true };
+    } catch (e) {
+      console.error('verifyOtp error:', e);
+      return { success: false, error: e instanceof Error ? e.message : '認証に失敗しました' };
     }
   };
 
@@ -242,7 +276,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, profile, futureshopMember, loading, signInWithMagicLink, signOut, refreshProfile }}>
+    <AuthContext.Provider value={{ user, profile, futureshopMember, loading, sendOtp, verifyOtp, signOut, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   );
