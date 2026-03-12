@@ -66,4 +66,13 @@ export interface CustomerProfile {
   display_name: string;
   email: string;
   phone: string;
+  futureshop_member_id?: string;
+}
+
+export interface FutureshopMemberInfo {
+  memberId: string;
+  lastName: string;
+  firstName: string;
+  mail: string;
+  telNoMain: string;
 }

@@ -15,18 +15,20 @@ interface ConfirmationProps {
 }
 
 export default function Confirmation({ tour, selectedDate, timeSlot, ticketCount, onBack, onComplete }: ConfirmationProps) {
-  const { user, profile } = useAuth();
+  const { user, profile, futureshopMember } = useAuth();
   const [isFirstTime, setIsFirstTime] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
-  // プロフィールまたはuser_metadataからユーザー情報を取得
-  const displayName = profile?.display_name
-    || user?.user_metadata?.display_name
-    || user?.email
-    || '';
-  const displayEmail = profile?.email || user?.email || '';
+  const isFutureshopLinked = !!futureshopMember || !!profile?.futureshop_member_id;
+
+  // Futureshop連携済みの場合はFutureshop情報を優先表示
+  const displayName = futureshopMember
+    ? `${futureshopMember.lastName} ${futureshopMember.firstName}`.trim()
+    : profile?.display_name || user?.user_metadata?.display_name || user?.email || '';
+  const displayEmail = futureshopMember?.mail || profile?.email || user?.email || '';
+  const displayPhone = futureshopMember?.telNoMain || profile?.phone || '';
 
   const dateObj = new Date(selectedDate + 'T00:00:00');
   const dateLabel = `${dateObj.getFullYear()}年${dateObj.getMonth() + 1}月${dateObj.getDate()}日`;
@@ -132,6 +134,20 @@ export default function Confirmation({ tour, selectedDate, timeSlot, ticketCount
         <span className="font-bold" style={{ color: tour.color }}>{tour.name}</span>
       </div>
 
+      {/* Futureshop連携ステータス */}
+      {isFutureshopLinked ? (
+        <div className="flex items-center gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg mb-4">
+          <span className="text-blue-600 font-bold text-sm">✓ Futureshop会員連携済み</span>
+        </div>
+      ) : (
+        <div className="flex items-center gap-2 p-3 bg-gray-50 border border-gray-200 rounded-lg mb-4">
+          <span className="text-gray-500 text-sm">
+            オンラインショップ会員登録がまだの方は
+            <a href="https://kanifactory.com/" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline ml-1">こちら</a>
+          </span>
+        </div>
+      )}
+
       <h2 className="text-lg font-bold text-gray-800 mb-6 text-center">予約内容の確認</h2>
 
       <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-4">
@@ -155,10 +171,22 @@ export default function Confirmation({ tour, selectedDate, timeSlot, ticketCount
           <span className="text-gray-500">お名前</span>
           <span className="font-bold">{displayName}</span>
         </div>
-        <div className="flex justify-between">
+        <div className="flex justify-between border-b border-gray-100 pb-3">
           <span className="text-gray-500">メール</span>
           <span className="font-bold text-sm">{displayEmail}</span>
         </div>
+        {displayPhone && (
+          <div className="flex justify-between">
+            <span className="text-gray-500">電話番号</span>
+            <span className="font-bold">{displayPhone}</span>
+          </div>
+        )}
+        {!displayPhone && (
+          <div className="flex justify-between">
+            <span className="text-gray-500">電話番号</span>
+            <span className="text-gray-400 text-sm">未登録</span>
+          </div>
+        )}
       </div>
 
       {/* Price section */}

@@ -4,7 +4,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { supabase } from './supabase';
 import { User } from '@supabase/supabase-js';
-import { CustomerProfile } from './types';
+import { CustomerProfile, FutureshopMemberInfo } from './types';
 
 interface AuthResult {
   error: string | null;
@@ -14,6 +14,7 @@ interface AuthResult {
 interface AuthContextType {
   user: User | null;
   profile: CustomerProfile | null;
+  futureshopMember: FutureshopMemberInfo | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<AuthResult>;
   signUp: (email: string, password: string, name: string, phone: string) => Promise<AuthResult>;
@@ -37,6 +38,7 @@ const AUTH_TIMEOUT_FALLBACK = { data: { user: null, session: null }, error: { me
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<CustomerProfile | null>(null);
+  const [futureshopMember, setFutureshopMember] = useState<FutureshopMemberInfo | null>(null);
   const [loading, setLoading] = useState(true);
 
   const fetchProfile = async (userId: string): Promise<CustomerProfile | null> => {
@@ -82,6 +84,46 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const lookupFutureshopMember = async (email: string): Promise<void> => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+
+      const res = await fetch(`/api/futureshop/member-search?email=${encodeURIComponent(email)}`, {
+        headers: { 'Authorization': `Bearer ${session.access_token}` },
+      });
+
+      if (res.ok) {
+        const { member } = await res.json();
+        setFutureshopMember(member);
+        console.log('[Futureshop] 会員連携成功:', member.memberId);
+
+        // customer_profilesにfutureshop_member_idを保存
+        const { data: { user: currentUser } } = await supabase.auth.getUser(session.access_token);
+        if (currentUser) {
+          const fullName = `${member.lastName} ${member.firstName}`.trim();
+          await supabase
+            .from('customer_profiles')
+            .update({
+              futureshop_member_id: member.memberId,
+              ...(fullName ? { display_name: fullName } : {}),
+              ...(member.telNoMain ? { phone: member.telNoMain } : {}),
+            })
+            .eq('user_id', currentUser.id);
+
+          // プロフィールを再取得して最新状態を反映
+          await fetchProfile(currentUser.id);
+        }
+      } else {
+        console.log('[Futureshop] 会員未登録（予約には影響なし）');
+        setFutureshopMember(null);
+      }
+    } catch (e) {
+      console.error('[Futureshop] 会員検索エラー:', e);
+      setFutureshopMember(null);
+    }
+  };
+
   const refreshProfile = async () => {
     if (user) {
       await fetchProfile(user.id);
@@ -104,6 +146,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               session.user.email || '',
               meta?.phone || '',
             );
+          }
+          // Futureshop会員検索（バックグラウンド）
+          if (session.user.email) {
+            lookupFutureshopMember(session.user.email);
           }
         }
       } catch (e) {
@@ -159,6 +205,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } catch (e) {
           console.error('signIn profile error:', e);
         }
+
+        // Futureshop会員検索（失敗してもログインは成功）
+        lookupFutureshopMember(email);
       }
 
       return { error: null };
@@ -227,11 +276,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     setUser(null);
     setProfile(null);
+    setFutureshopMember(null);
     window.location.reload();
   };
 
   return (
-    <AuthContext.Provider value={{ user, profile, loading, signIn, signUp, signOut, refreshProfile }}>
+    <AuthContext.Provider value={{ user, profile, futureshopMember, loading, signIn, signUp, signOut, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   );
