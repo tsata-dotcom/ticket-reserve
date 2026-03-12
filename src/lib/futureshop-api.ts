@@ -73,7 +73,7 @@ export async function searchMemberByEmail(email: string): Promise<FutureshopMemb
 
   const rawData = await proxyRequest({
     method: 'GET',
-    url: `https://${getApiDomain()}/admin-api/v1/members?mail=${encodeURIComponent(email)}`,
+    url: `https://${getApiDomain()}/admin-api/v1/member?mail=${encodeURIComponent(email)}`,
     headers: {
       'X-SHOP-KEY': getShopKey(),
       'Authorization': `Bearer ${token}`,
@@ -83,9 +83,10 @@ export async function searchMemberByEmail(email: string): Promise<FutureshopMemb
 
   console.log('[Futureshop] Member search response:', JSON.stringify(data));
 
-  // APIレスポンスから会員情報を抽出
-  if (data.members && data.members.length > 0) {
-    const m = data.members[0];
+  // APIレスポンスから会員情報を抽出（memberList が実際のキー）
+  const memberArray = data.memberList || data.members;
+  if (memberArray && memberArray.length > 0) {
+    const m = memberArray[0];
     return {
       memberId: m.memberId || m.member_id,
       lastName: m.lastName || m.last_name || '',
