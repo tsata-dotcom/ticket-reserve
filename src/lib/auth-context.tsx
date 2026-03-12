@@ -244,11 +244,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
 
       if (error) {
-        console.error('verifyOtp error:', error);
-        if (error.message.includes('expired')) {
+        console.error('verifyOtp error:', error.message);
+        const msg = error.message.toLowerCase();
+        if (msg.includes('expired')) {
           return { success: false, error: '認証コードの有効期限が切れました。再送信してください。' };
         }
-        return { success: false, error: '認証コードが正しくありません。' };
+        if (msg.includes('invalid') || msg.includes('token')) {
+          return { success: false, error: '認証コードが正しくありません。再度ご確認ください。' };
+        }
+        return { success: false, error: '認証に失敗しました。もう一度お試しください。' };
       }
 
       if (data.user) {
