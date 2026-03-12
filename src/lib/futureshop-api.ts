@@ -1,5 +1,14 @@
 import { proxyRequest } from './proxy-client';
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function unwrapProxyResponse(data: any): any {
+  // プロキシが { status, headers, body } でラップしている場合はbodyを取り出す
+  if (data && typeof data === 'object' && 'body' in data && 'status' in data) {
+    return data.body;
+  }
+  return data;
+}
+
 // トークンキャッシュ
 let cachedToken: string | null = null;
 let tokenExpiresAt: number = 0;
@@ -29,7 +38,7 @@ export async function getAccessToken(): Promise<string> {
 
   console.log('[Futureshop] Requesting new access token...');
 
-  const data = await proxyRequest({
+  const rawData = await proxyRequest({
     method: 'POST',
     url: `https://${getApiDomain()}/oauth/token`,
     headers: {
@@ -39,6 +48,7 @@ export async function getAccessToken(): Promise<string> {
     },
     body: 'grant_type=client_credentials',
   });
+  const data = unwrapProxyResponse(rawData);
 
   if (!data.access_token) {
     console.error('[Futureshop] Token response:', data);
@@ -61,7 +71,7 @@ export async function searchMemberByEmail(email: string): Promise<FutureshopMemb
 
   console.log(`[Futureshop] Searching member by email: ${email}`);
 
-  const data = await proxyRequest({
+  const rawData = await proxyRequest({
     method: 'GET',
     url: `https://${getApiDomain()}/admin-api/v1/members?mail=${encodeURIComponent(email)}`,
     headers: {
@@ -69,6 +79,7 @@ export async function searchMemberByEmail(email: string): Promise<FutureshopMemb
       'Authorization': `Bearer ${token}`,
     },
   });
+  const data = unwrapProxyResponse(rawData);
 
   console.log('[Futureshop] Member search response:', JSON.stringify(data));
 
@@ -109,7 +120,7 @@ export async function searchOrders(params: { memberId?: string; orderDateFrom?: 
   if (params.orderDateFrom) query.set('orderDateFrom', params.orderDateFrom);
   if (params.orderDateTo) query.set('orderDateTo', params.orderDateTo);
 
-  const data = await proxyRequest({
+  const rawData = await proxyRequest({
     method: 'GET',
     url: `https://${getApiDomain()}/admin-api/v1/orders?${query.toString()}`,
     headers: {
@@ -118,7 +129,7 @@ export async function searchOrders(params: { memberId?: string; orderDateFrom?: 
     },
   });
 
-  return data;
+  return unwrapProxyResponse(rawData);
 }
 
 // 型定義
