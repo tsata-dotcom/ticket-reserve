@@ -62,7 +62,6 @@ export interface Reservation {
 
 export interface CustomerProfile {
   id: string;
-  user_id: string;
   display_name: string;
   email: string;
   phone: string;

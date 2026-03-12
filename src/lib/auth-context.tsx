@@ -44,7 +44,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const fetchProfile = async (userId: string): Promise<CustomerProfile | null> => {
     try {
       const { data, error } = await withTimeout(
-        supabase.from('customer_profiles').select('*').eq('user_id', userId).single(),
+        supabase.from('customer_profiles').select('*').eq('id', userId).single(),
         5000,
         TIMEOUT_FALLBACK as any
       );
@@ -65,7 +65,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const { data, error } = await withTimeout(
         supabase
           .from('customer_profiles')
-          .upsert({ user_id: userId, display_name: name, email, phone }, { onConflict: 'user_id' })
+          .upsert({ id: userId, display_name: name, email, phone }, { onConflict: 'id' })
           .select()
           .single(),
         5000,
@@ -109,7 +109,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               ...(fullName ? { display_name: fullName } : {}),
               ...(member.telNoMain ? { phone: member.telNoMain } : {}),
             })
-            .eq('user_id', currentUser.id);
+            .eq('id', currentUser.id);
 
           // プロフィールを再取得して最新状態を反映
           await fetchProfile(currentUser.id);

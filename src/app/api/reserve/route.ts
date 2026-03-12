@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
     const { data: existingProfile, error: profileFetchError } = await supabase
       .from('customer_profiles')
       .select('*')
-      .eq('user_id', user.id)
+      .eq('id', user.id)
       .single();
 
     if (profileFetchError) {
@@ -84,11 +84,11 @@ export async function POST(request: NextRequest) {
       const { data: newProfile, error: profileError } = await supabase
         .from('customer_profiles')
         .upsert({
-          user_id: user.id,
+          id: user.id,
           display_name: meta?.display_name || user.email || '',
           email: user.email || '',
           phone: meta?.phone || '',
-        }, { onConflict: 'user_id' })
+        }, { onConflict: 'id' })
         .select()
         .single();
 
