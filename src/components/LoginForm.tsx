@@ -156,7 +156,7 @@ export default function LoginForm({ onSuccess, onSwitchToRegister }: LoginFormPr
             <h2 className="text-lg font-bold text-gray-800 mb-2">認証コードを送信しました</h2>
             <p className="text-gray-600 text-sm leading-relaxed">
               <span className="font-bold">{email}</span> 宛に認証コードを送信しました。
-              メールに届いた8桁のコードを入力してください。
+              メールに届いた6桁のコードを入力してください。
             </p>
           </div>
 
@@ -182,11 +182,11 @@ export default function LoginForm({ onSuccess, onSwitchToRegister }: LoginFormPr
                 inputMode="numeric"
                 autoComplete="one-time-code"
                 value={otpCode}
-                onChange={(e) => setOtpCode(e.target.value.replace(/[^0-9]/g, '').slice(0, 8))}
+                onChange={(e) => setOtpCode(e.target.value.replace(/[^0-9]/g, '').slice(0, 6))}
                 required
-                maxLength={8}
+                maxLength={6}
                 className="w-full px-4 py-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent outline-none text-center text-2xl tracking-[0.5em] font-mono"
-                placeholder="12345678"
+                placeholder="123456"
               />
             </div>
 
