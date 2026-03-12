@@ -124,16 +124,18 @@ export default function LoginForm({ onSuccess, onSwitchToRegister }: LoginFormPr
             <h2 className="text-lg font-bold text-gray-800 mb-3">会員登録が必要です</h2>
             <p className="text-gray-600 text-sm leading-relaxed mb-4">
               ご予約にはかにファクトリーオンラインショップの会員登録が必要です。
-              下記リンクから会員登録のうえ、再度お試しください。
             </p>
             <a
-              href="https://kanifactory.com/"
+              href="https://cctest26120203.trial.future-shop.net/p/register"
               target="_blank"
               rel="noopener noreferrer"
               className="inline-block w-full py-3 bg-orange-500 text-white rounded-xl font-bold text-lg hover:bg-orange-600 transition-colors min-h-[48px]"
             >
-              会員登録はこちら
+              オンラインショップで会員登録する
             </a>
+            <p className="text-gray-500 text-xs mt-3">
+              登録後、このページに戻ってメールアドレスを入力してください。
+            </p>
           </div>
           <button
             onClick={() => { setFormState('email'); setEmail(''); setError(''); }}
