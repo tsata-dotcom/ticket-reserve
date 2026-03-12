@@ -1,6 +1,6 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { proxyRequest } from './proxy-client';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function unwrapProxyResponse(data: any): any {
   // プロキシが { status, headers, body } でラップしている場合はbodyを取り出す
   if (data && typeof data === 'object' && 'body' in data && 'status' in data) {
@@ -84,9 +84,11 @@ export async function searchMemberByEmail(email: string): Promise<FutureshopMemb
   console.log('[Futureshop] Member search response:', JSON.stringify(data));
 
   // APIレスポンスから会員情報を抽出（memberList が実際のキー）
+  // APIがmailフィルターを無視して全件返す場合があるため、クライアント側でメール一致を確認
   const memberArray = data.memberList || data.members;
   if (memberArray && memberArray.length > 0) {
-    const m = memberArray[0];
+    const m = memberArray.find((item: any) => (item.mail || item.email) === email) || null;
+    if (!m) return null;
     return {
       memberId: m.memberId || m.member_id,
       lastName: m.lastName || m.last_name || '',
