@@ -3,7 +3,7 @@
 const STEPS = [
   { label: '体験を選ぶ', num: '❶' },
   { label: '日時を選ぶ', num: '❷' },
-  { label: 'ログイン', num: '❸' },
+  { label: 'メール認証', num: '❸' },
   { label: '予約確認', num: '❹' },
   { label: '完了', num: '❺' },
 ];

@@ -6,9 +6,11 @@ import { supabase } from './supabase';
 import { User } from '@supabase/supabase-js';
 import { CustomerProfile, FutureshopMemberInfo } from './types';
 
-interface AuthResult {
-  error: string | null;
+interface MagicLinkResult {
+  success: boolean;
   needsEmailConfirmation?: boolean;
+  notFsMember?: boolean;
+  error?: string;
 }
 
 interface AuthContextType {
@@ -16,8 +18,7 @@ interface AuthContextType {
   profile: CustomerProfile | null;
   futureshopMember: FutureshopMemberInfo | null;
   loading: boolean;
-  signIn: (email: string, password: string) => Promise<AuthResult>;
-  signUp: (email: string, password: string, name: string, phone: string) => Promise<AuthResult>;
+  signInWithMagicLink: (email: string) => Promise<MagicLinkResult>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 }
@@ -33,7 +34,6 @@ function withTimeout<T>(promiseLike: PromiseLike<T>, ms: number, fallback: T): P
 }
 
 const TIMEOUT_FALLBACK = { data: null, error: { message: 'timeout' } };
-const AUTH_TIMEOUT_FALLBACK = { data: { user: null, session: null }, error: { message: 'timeout' } };
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -124,6 +124,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const handleUserLogin = async (loginUser: User) => {
+    // プロフィール取得・作成
+    try {
+      const existing = await fetchProfile(loginUser.id);
+      if (!existing) {
+        const meta = loginUser.user_metadata;
+        await upsertProfile(
+          loginUser.id,
+          meta?.display_name || loginUser.email || '',
+          loginUser.email || '',
+          meta?.phone || '',
+        );
+      }
+    } catch (e) {
+      console.error('handleUserLogin profile error:', e);
+    }
+
+    // Futureshop会員検索
+    if (loginUser.email) {
+      lookupFutureshopMember(loginUser.email);
+    }
+  };
+
   const refreshProfile = async () => {
     if (user) {
       await fetchProfile(user.id);
@@ -136,21 +159,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const { data: { session } } = await supabase.auth.getSession();
         if (session?.user) {
           setUser(session.user);
-          // プロフィール取得（失敗しても続行）
-          const existing = await fetchProfile(session.user.id);
-          if (!existing) {
-            const meta = session.user.user_metadata;
-            await upsertProfile(
-              session.user.id,
-              meta?.display_name || session.user.email || '',
-              session.user.email || '',
-              meta?.phone || '',
-            );
-          }
-          // Futureshop会員検索（バックグラウンド）
-          if (session.user.email) {
-            lookupFutureshopMember(session.user.email);
-          }
+          await handleUserLogin(session.user);
         }
       } catch (e) {
         console.error('Auth init error:', e);
@@ -159,112 +168,64 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
     init();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      const prevUser = user;
       setUser(session?.user ?? null);
+
       if (!session?.user) {
         setProfile(null);
+        setFutureshopMember(null);
+        return;
       }
-      // onAuthStateChangeではプロフィール操作しない（signIn/signUpで処理するため競合を防ぐ）
+
+      // マジックリンクからのログイン時にプロフィール・FS連携を実行
+      if (event === 'SIGNED_IN' && !prevUser && session.user) {
+        await handleUserLogin(session.user);
+      }
     });
 
     return () => subscription.unsubscribe();
   }, []);
 
-  const signIn = async (email: string, password: string): Promise<AuthResult> => {
+  const signInWithMagicLink = async (email: string): Promise<MagicLinkResult> => {
     try {
-      const { data, error } = await withTimeout(
-        supabase.auth.signInWithPassword({ email, password }),
-        10000,
-        AUTH_TIMEOUT_FALLBACK as any
-      );
+      // 1. Futureshop会員チェック
+      const checkRes = await fetch('/api/futureshop/member-check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+
+      if (!checkRes.ok) {
+        return { success: false, error: 'Futureshop会員確認に失敗しました。しばらく経ってから再度お試しください。' };
+      }
+
+      const checkData = await checkRes.json();
+
+      if (!checkData.exists) {
+        return { success: false, notFsMember: true };
+      }
+
+      // 2. マジックリンク送信
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth/callback`,
+        },
+      });
 
       if (error) {
-        console.error('signIn error:', error);
-        if (error.message === 'timeout') {
-          return { error: 'ログイン処理がタイムアウトしました。再度お試しください。' };
+        console.error('signInWithOtp error:', error);
+        if (error.message.includes('rate') || error.message.includes('limit')) {
+          return { success: false, error: 'メール送信の制限に達しました。60秒後に再度お試しください。' };
         }
-        return { error: 'メールアドレスまたはパスワードが正しくありません' };
+        return { success: false, error: 'メール送信に失敗しました。もう一度お試しください。' };
       }
 
-      if (data.user) {
-        // プロフィール取得・作成（失敗してもログインは成功）
-        try {
-          const existing = await fetchProfile(data.user.id);
-          if (!existing) {
-            const meta = data.user.user_metadata;
-            const result = await upsertProfile(
-              data.user.id,
-              meta?.display_name || email,
-              email,
-              meta?.phone || '',
-            );
-            if (result.error) {
-              console.error('signIn プロフィール作成エラー:', result.error);
-            }
-          }
-        } catch (e) {
-          console.error('signIn profile error:', e);
-        }
-
-        // Futureshop会員検索（失敗してもログインは成功）
-        lookupFutureshopMember(email);
-      }
-
-      return { error: null };
+      return { success: true, needsEmailConfirmation: true };
     } catch (e) {
-      console.error('signIn unexpected error:', e);
-      return { error: e instanceof Error ? e.message : 'ログインに失敗しました' };
-    }
-  };
-
-  const signUp = async (email: string, password: string, name: string, phone: string): Promise<AuthResult> => {
-    try {
-      const { data, error } = await withTimeout(
-        supabase.auth.signUp({
-          email,
-          password,
-          options: { data: { display_name: name, phone } },
-        }),
-        10000,
-        AUTH_TIMEOUT_FALLBACK as any
-      );
-
-      if (error) {
-        console.error('signUp error:', error);
-        if (error.message === 'timeout') {
-          return { error: '登録処理がタイムアウトしました。再度お試しください。' };
-        }
-        if (error.message.includes('already registered') || error.message.includes('already been registered') || error.message.includes('User already registered')) {
-          return { error: 'このメールアドレスは既に登録されています' };
-        }
-        return { error: '登録に失敗しました: ' + error.message };
-      }
-
-      if (!data.user) {
-        return { error: '登録に失敗しました' };
-      }
-
-      console.log('signUp success:', { userId: data.user.id, hasSession: !!data.session });
-
-      // メール確認が必要な場合
-      if (!data.session) {
-        return { error: null, needsEmailConfirmation: true };
-      }
-
-      // セッションありの場合: プロフィール作成（失敗しても登録は成功）
-      try {
-        const result = await upsertProfile(data.user.id, name, email, phone);
-        if (result.error) {
-          console.error('signUp プロフィール作成エラー:', result.error);
-        }
-      } catch (e) {
-        console.error('signUp profile error:', e);
-      }
-
-      return { error: null };
-    } catch (e) {
-      console.error('signUp unexpected error:', e);
-      return { error: e instanceof Error ? e.message : '会員登録に失敗しました' };
+      console.error('signInWithMagicLink error:', e);
+      return { success: false, error: e instanceof Error ? e.message : 'ログインに失敗しました' };
     }
   };
 
@@ -281,7 +242,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, profile, futureshopMember, loading, signIn, signUp, signOut, refreshProfile }}>
+    <AuthContext.Provider value={{ user, profile, futureshopMember, loading, signInWithMagicLink, signOut, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   );
