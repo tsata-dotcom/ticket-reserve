@@ -1,7 +1,7 @@
 import nodemailer from 'nodemailer';
 
 const transporter = nodemailer.createTransport({
-  host: 'kanifactory.com',
+  host: 'denshoku-corp.sakura.ne.jp',
   port: 587,
   secure: false,
   auth: {
