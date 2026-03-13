@@ -5,8 +5,12 @@ const transporter = nodemailer.createTransport({
   port: 587,
   secure: false,
   auth: {
+    type: 'LOGIN',
     user: 'info@kanifactory.com',
     pass: process.env.SMTP_PASSWORD!,
+  },
+  tls: {
+    rejectUnauthorized: false,
   },
 });
 
