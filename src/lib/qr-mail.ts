@@ -14,7 +14,7 @@ export async function sendQrEmail(params: {
   const qrDataUrl = await QRCode.toDataURL(params.orderNo, { width: 200, margin: 2 });
   const qrBase64 = qrDataUrl.replace(/^data:image\/png;base64,/, '');
 
-  const timeSlotLabel = params.timeSlot === 'morning' ? '午前の部（10:00〜11:30）' : '午後の部（14:00〜15:30）';
+  const timeSlotLabel = params.timeSlot === 'AM' ? '午前の部（10:00〜11:30）' : '午後の部（14:00〜15:30）';
 
   const emailHtml = `
     <div style="font-family: 'Noto Sans JP', sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">

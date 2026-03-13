@@ -8,7 +8,7 @@ import QRCode from 'qrcode';
 interface CompletionProps {
   tour: TourInfo;
   selectedDate: string;
-  timeSlot: 'morning' | 'afternoon';
+  timeSlot: 'AM' | 'PM';
   ticketCount: number;
   orderNo: string;
   onReset: () => void;
@@ -19,7 +19,7 @@ export default function Completion({ tour, selectedDate, timeSlot, ticketCount, 
 
   const dateObj = new Date(selectedDate + 'T00:00:00');
   const dateLabel = `${dateObj.getFullYear()}年${dateObj.getMonth() + 1}月${dateObj.getDate()}日`;
-  const timeSlotLabel = timeSlot === 'morning' ? '午前の部（10:00〜11:30）' : '午後の部（14:00〜15:30）';
+  const timeSlotLabel = timeSlot === 'AM' ? '午前の部（10:00〜11:30）' : '午後の部（14:00〜15:30）';
 
   useEffect(() => {
     QRCode.toDataURL(orderNo, { width: 200, margin: 2 }).then(setQrDataUrl);

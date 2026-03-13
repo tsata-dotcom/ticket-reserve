@@ -7,7 +7,7 @@ interface TimeSlotSelectorProps {
   tour: TourInfo;
   selectedDate: string;
   onBack: () => void;
-  onNext: (timeSlot: 'morning' | 'afternoon', count: number) => void;
+  onNext: (timeSlot: 'AM' | 'PM', count: number) => void;
   isLoggedIn: boolean;
 }
 
@@ -17,9 +17,9 @@ interface SlotAvail {
 }
 
 export default function TimeSlotSelector({ tour, selectedDate, onBack, onNext, isLoggedIn }: TimeSlotSelectorProps) {
-  const [morningAvail, setMorningAvail] = useState<SlotAvail | null>(null);
-  const [afternoonAvail, setAfternoonAvail] = useState<SlotAvail | null>(null);
-  const [selectedSlot, setSelectedSlot] = useState<'morning' | 'afternoon' | null>(null);
+  const [amAvail, setAmAvail] = useState<SlotAvail | null>(null);
+  const [pmAvail, setPmAvail] = useState<SlotAvail | null>(null);
+  const [selectedSlot, setSelectedSlot] = useState<'AM' | 'PM' | null>(null);
   const [count, setCount] = useState(1);
   const [loading, setLoading] = useState(true);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -37,8 +37,8 @@ export default function TimeSlotSelector({ tour, selectedDate, onBack, onNext, i
       const data = await res.json();
       const dayAvail = data.availability?.[selectedDate];
       if (dayAvail) {
-        setMorningAvail(dayAvail.morning);
-        setAfternoonAvail(dayAvail.afternoon);
+        setAmAvail(dayAvail.AM);
+        setPmAvail(dayAvail.PM);
       }
       setLoading(false);
     };
@@ -51,13 +51,13 @@ export default function TimeSlotSelector({ tour, selectedDate, onBack, onNext, i
     }
   }, [selectedSlot, count]);
 
-  const maxCount = selectedSlot === 'morning'
-    ? morningAvail?.remaining || 0
-    : selectedSlot === 'afternoon'
-    ? afternoonAvail?.remaining || 0
+  const maxCount = selectedSlot === 'AM'
+    ? amAvail?.remaining || 0
+    : selectedSlot === 'PM'
+    ? pmAvail?.remaining || 0
     : 1;
 
-  const handleSlotSelect = (slot: 'morning' | 'afternoon') => {
+  const handleSlotSelect = (slot: 'AM' | 'PM') => {
     setSelectedSlot(slot);
     setCount(1);
   };
@@ -91,12 +91,12 @@ export default function TimeSlotSelector({ tour, selectedDate, onBack, onNext, i
       <div className="space-y-3">
         {/* Morning slot */}
         <button
-          disabled={morningAvail?.status === 'full' || morningAvail?.status === 'closed'}
-          onClick={() => handleSlotSelect('morning')}
+          disabled={amAvail?.status === 'full' || amAvail?.status === 'closed'}
+          onClick={() => handleSlotSelect('AM')}
           className={`w-full p-4 rounded-xl border-2 text-left transition-all ${
-            selectedSlot === 'morning'
+            selectedSlot === 'AM'
               ? 'border-primary bg-primary-light shadow-md'
-              : morningAvail?.status === 'full' || morningAvail?.status === 'closed'
+              : amAvail?.status === 'full' || amAvail?.status === 'closed'
               ? 'border-gray-200 bg-gray-50 opacity-50 cursor-not-allowed'
               : 'border-gray-200 hover:border-gray-300'
           }`}
@@ -107,13 +107,13 @@ export default function TimeSlotSelector({ tour, selectedDate, onBack, onNext, i
               <p className="text-sm text-gray-500">10:00〜11:30</p>
             </div>
             <div className="text-right">
-              {morningAvail?.status === 'full' ? (
+              {amAvail?.status === 'full' ? (
                 <span className="text-red-500 font-bold">満席</span>
-              ) : morningAvail?.status === 'closed' ? (
+              ) : amAvail?.status === 'closed' ? (
                 <span className="text-gray-400 font-bold">休</span>
               ) : (
-                <span className={`font-bold ${morningAvail?.status === 'few' ? 'text-orange-500' : 'text-green-600'}`}>
-                  残り{morningAvail?.remaining}枠
+                <span className={`font-bold ${amAvail?.status === 'few' ? 'text-orange-500' : 'text-green-600'}`}>
+                  残り{amAvail?.remaining}枠
                 </span>
               )}
             </div>
@@ -122,12 +122,12 @@ export default function TimeSlotSelector({ tour, selectedDate, onBack, onNext, i
 
         {/* Afternoon slot */}
         <button
-          disabled={afternoonAvail?.status === 'full' || afternoonAvail?.status === 'closed'}
-          onClick={() => handleSlotSelect('afternoon')}
+          disabled={pmAvail?.status === 'full' || pmAvail?.status === 'closed'}
+          onClick={() => handleSlotSelect('PM')}
           className={`w-full p-4 rounded-xl border-2 text-left transition-all ${
-            selectedSlot === 'afternoon'
+            selectedSlot === 'PM'
               ? 'border-primary bg-primary-light shadow-md'
-              : afternoonAvail?.status === 'full' || afternoonAvail?.status === 'closed'
+              : pmAvail?.status === 'full' || pmAvail?.status === 'closed'
               ? 'border-gray-200 bg-gray-50 opacity-50 cursor-not-allowed'
               : 'border-gray-200 hover:border-gray-300'
           }`}
@@ -138,13 +138,13 @@ export default function TimeSlotSelector({ tour, selectedDate, onBack, onNext, i
               <p className="text-sm text-gray-500">14:00〜15:30</p>
             </div>
             <div className="text-right">
-              {afternoonAvail?.status === 'full' ? (
+              {pmAvail?.status === 'full' ? (
                 <span className="text-red-500 font-bold">満席</span>
-              ) : afternoonAvail?.status === 'closed' ? (
+              ) : pmAvail?.status === 'closed' ? (
                 <span className="text-gray-400 font-bold">休</span>
               ) : (
-                <span className={`font-bold ${afternoonAvail?.status === 'few' ? 'text-orange-500' : 'text-green-600'}`}>
-                  残り{afternoonAvail?.remaining}枠
+                <span className={`font-bold ${pmAvail?.status === 'few' ? 'text-orange-500' : 'text-green-600'}`}>
+                  残り{pmAvail?.remaining}枠
                 </span>
               )}
             </div>

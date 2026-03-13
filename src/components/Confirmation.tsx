@@ -8,7 +8,7 @@ import { supabase } from '@/lib/supabase';
 interface ConfirmationProps {
   tour: TourInfo;
   selectedDate: string;
-  timeSlot: 'morning' | 'afternoon';
+  timeSlot: 'AM' | 'PM';
   ticketCount: number;
   onBack: () => void;
   onComplete: (orderNo: string) => void;
@@ -32,7 +32,7 @@ export default function Confirmation({ tour, selectedDate, timeSlot, ticketCount
 
   const dateObj = new Date(selectedDate + 'T00:00:00');
   const dateLabel = `${dateObj.getFullYear()}年${dateObj.getMonth() + 1}月${dateObj.getDate()}日`;
-  const timeSlotLabel = timeSlot === 'morning' ? '午前の部（10:00〜11:30）' : '午後の部（14:00〜15:30）';
+  const timeSlotLabel = timeSlot === 'AM' ? '午前の部（10:00〜11:30）' : '午後の部（14:00〜15:30）';
 
   useEffect(() => {
     const checkFirstTime = async () => {

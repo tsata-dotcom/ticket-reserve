@@ -4,8 +4,8 @@ import { useEffect, useState } from 'react';
 import { TourType } from '@/lib/types';
 
 interface DayAvail {
-  morning: { remaining: number; status: string };
-  afternoon: { remaining: number; status: string };
+  AM: { remaining: number; status: string };
+  PM: { remaining: number; status: string };
 }
 
 interface CalendarProps {
@@ -150,7 +150,7 @@ export default function Calendar({ tourType, onSelectDate, selectedDate }: Calen
               const isSelected = selectedDate === dateStr;
               const avail = availability[dateStr];
 
-              const canSelect = !isPast && avail && (avail.morning.status !== 'closed' || avail.afternoon.status !== 'closed') && (avail.morning.status !== 'full' || avail.afternoon.status !== 'full');
+              const canSelect = !isPast && avail && (avail.AM.status !== 'closed' || avail.PM.status !== 'closed') && (avail.AM.status !== 'full' || avail.PM.status !== 'full');
 
               return (
                 <button
@@ -176,8 +176,8 @@ export default function Calendar({ tourType, onSelectDate, selectedDate }: Calen
                   </span>
                   {!isPast && avail && (
                     <div className="mt-auto space-y-0.5">
-                      <StatusBadge label="午前" status={avail.morning.status} remaining={avail.morning.remaining} />
-                      <StatusBadge label="午後" status={avail.afternoon.status} remaining={avail.afternoon.remaining} />
+                      <StatusBadge label="午前" status={avail.AM.status} remaining={avail.AM.remaining} />
+                      <StatusBadge label="午後" status={avail.PM.status} remaining={avail.PM.remaining} />
                     </div>
                   )}
                 </button>

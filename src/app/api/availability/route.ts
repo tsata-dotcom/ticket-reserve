@@ -39,29 +39,29 @@ export async function GET(request: NextRequest) {
     .lte('date', endDate);
 
   // Build availability map
-  const availability: Record<string, { morning: { remaining: number; status: string }; afternoon: { remaining: number; status: string } }> = {};
+  const availability: Record<string, { AM: { remaining: number; status: string }; PM: { remaining: number; status: string } }> = {};
 
   for (let day = 1; day <= lastDay; day++) {
     const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 
-    const morningSetting = settings?.find(s => s.date === dateStr && s.time_slot === 'morning');
-    const afternoonSetting = settings?.find(s => s.date === dateStr && s.time_slot === 'afternoon');
+    const amSetting = settings?.find(s => s.date === dateStr && s.time_slot === 'AM');
+    const pmSetting = settings?.find(s => s.date === dateStr && s.time_slot === 'PM');
 
-    const morningClosed = morningSetting?.is_closed ?? false;
-    const afternoonClosed = afternoonSetting?.is_closed ?? false;
-    const morningCapacity = morningSetting?.capacity ?? DEFAULT_CAPACITY;
-    const afternoonCapacity = afternoonSetting?.capacity ?? DEFAULT_CAPACITY;
+    const amClosed = amSetting?.is_closed ?? false;
+    const pmClosed = pmSetting?.is_closed ?? false;
+    const amCapacity = amSetting?.capacity ?? DEFAULT_CAPACITY;
+    const pmCapacity = pmSetting?.capacity ?? DEFAULT_CAPACITY;
 
-    const morningReserved = (reservations || [])
-      .filter(r => r.visit_date === dateStr && r.time_slot === 'morning')
+    const amReserved = (reservations || [])
+      .filter(r => r.visit_date === dateStr && r.time_slot === 'AM')
       .reduce((sum, r) => sum + (r.ticket_count || 0), 0);
 
-    const afternoonReserved = (reservations || [])
-      .filter(r => r.visit_date === dateStr && r.time_slot === 'afternoon')
+    const pmReserved = (reservations || [])
+      .filter(r => r.visit_date === dateStr && r.time_slot === 'PM')
       .reduce((sum, r) => sum + (r.ticket_count || 0), 0);
 
-    const morningRemaining = morningCapacity - morningReserved;
-    const afternoonRemaining = afternoonCapacity - afternoonReserved;
+    const amRemaining = amCapacity - amReserved;
+    const pmRemaining = pmCapacity - pmReserved;
 
     const getStatus = (remaining: number, closed: boolean) => {
       if (closed) return 'closed';
@@ -71,8 +71,8 @@ export async function GET(request: NextRequest) {
     };
 
     availability[dateStr] = {
-      morning: { remaining: Math.max(0, morningRemaining), status: getStatus(morningRemaining, morningClosed) },
-      afternoon: { remaining: Math.max(0, afternoonRemaining), status: getStatus(afternoonRemaining, afternoonClosed) },
+      AM: { remaining: Math.max(0, amRemaining), status: getStatus(amRemaining, amClosed) },
+      PM: { remaining: Math.max(0, pmRemaining), status: getStatus(pmRemaining, pmClosed) },
     };
   }
 

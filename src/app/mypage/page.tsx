@@ -100,7 +100,7 @@ function MyPageContent() {
   const past = reservations.filter(r => r.visit_date <= today || r.status !== 'reserved');
 
   const timeSlotLabel = (slot: string) =>
-    slot === 'morning' ? '午前の部（10:00〜11:30）' : '午後の部（14:00〜15:30）';
+    slot === 'AM' ? '午前の部（10:00〜11:30）' : '午後の部（14:00〜15:30）';
 
   const statusLabel = (status: string) => {
     switch (status) {

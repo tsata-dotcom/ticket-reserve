@@ -18,7 +18,7 @@ function ReservationFlow() {
   const [step, setStep] = useState(0);
   const [selectedTour, setSelectedTour] = useState<TourType | null>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
-  const [timeSlot, setTimeSlot] = useState<'morning' | 'afternoon' | null>(null);
+  const [timeSlot, setTimeSlot] = useState<'AM' | 'PM' | null>(null);
   const [ticketCount, setTicketCount] = useState(1);
   const [orderNo, setOrderNo] = useState('');
   const [showRegister, setShowRegister] = useState(false);
@@ -50,7 +50,7 @@ function ReservationFlow() {
     setTimeout(() => dateButtonRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
   };
 
-  const handleTimeSlotNext = (slot: 'morning' | 'afternoon', count: number) => {
+  const handleTimeSlotNext = (slot: 'AM' | 'PM', count: number) => {
     setTimeSlot(slot);
     setTicketCount(count);
     // ログイン済みならステップ3（予約確認）へ、未ログインならステップ2（ログイン）へ

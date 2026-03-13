@@ -30,15 +30,15 @@ export const TOURS: TourInfo[] = [
 
 export interface TimeSlotSetting {
   date: string;
-  time_slot: 'morning' | 'afternoon';
+  time_slot: 'AM' | 'PM';
   capacity: number;
   is_closed: boolean;
 }
 
 export interface DayAvailability {
   date: string;
-  morning: { remaining: number; status: 'available' | 'few' | 'full' | 'closed' };
-  afternoon: { remaining: number; status: 'available' | 'few' | 'full' | 'closed' };
+  AM: { remaining: number; status: 'available' | 'few' | 'full' | 'closed' };
+  PM: { remaining: number; status: 'available' | 'few' | 'full' | 'closed' };
 }
 
 export interface Reservation {
@@ -48,7 +48,7 @@ export interface Reservation {
   buyer_email: string;
   buyer_phone: string;
   visit_date: string;
-  time_slot: 'morning' | 'afternoon';
+  time_slot: 'AM' | 'PM';
   ticket_count: number;
   tour_type: TourType;
   unit_price: number;
