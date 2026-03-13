@@ -13,6 +13,8 @@ function MyPageContent() {
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [loading, setLoading] = useState(true);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const [resendingId, setResendingId] = useState<string | null>(null);
+  const [toast, setToast] = useState('');
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -62,6 +64,37 @@ function MyPageContent() {
     setCancellingId(null);
   };
 
+  const handleResendQr = async (id: string) => {
+    setResendingId(id);
+    setToast('');
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+
+    try {
+      const res = await fetch('/api/resend-qr', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ reservation_id: id }),
+      });
+
+      if (res.ok) {
+        setToast('QRコード付きメールを再送信しました');
+        setTimeout(() => setToast(''), 4000);
+      } else {
+        const data = await res.json();
+        setToast(data.error || 'メール再送信に失敗しました');
+        setTimeout(() => setToast(''), 4000);
+      }
+    } catch {
+      setToast('メール再送信に失敗しました');
+      setTimeout(() => setToast(''), 4000);
+    }
+    setResendingId(null);
+  };
+
   const today = new Date().toISOString().split('T')[0];
   const upcoming = reservations.filter(r => r.visit_date > today && r.status === 'reserved');
   const past = reservations.filter(r => r.visit_date <= today || r.status !== 'reserved');
@@ -95,6 +128,12 @@ function MyPageContent() {
       <main className="max-w-[600px] md:max-w-[800px] mx-auto px-4 py-6">
         <h1 className="text-xl font-bold text-gray-800 mb-6">マイページ</h1>
 
+        {toast && (
+          <div className="mb-4 p-3 bg-green-50 text-green-700 rounded-lg text-sm font-bold text-center animate-fade-in">
+            {toast}
+          </div>
+        )}
+
         {/* Upcoming reservations */}
         <section className="mb-8">
           <h2 className="text-lg font-bold text-gray-700 mb-3 flex items-center gap-2">
@@ -118,8 +157,15 @@ function MyPageContent() {
                       </div>
                       <span className={`text-xs px-2 py-1 rounded-full font-bold ${s.color}`}>{s.text}</span>
                     </div>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-gray-500">{r.ticket_count}名 / ¥{r.total_amount.toLocaleString()}</span>
+                    <div className="text-sm text-gray-500 mb-2">{r.ticket_count}名 / ¥{r.total_amount.toLocaleString()}</div>
+                    <div className="flex items-center justify-between">
+                      <button
+                        onClick={() => handleResendQr(r.id)}
+                        disabled={resendingId === r.id}
+                        className="text-primary hover:text-primary-dark font-bold text-sm disabled:opacity-50"
+                      >
+                        {resendingId === r.id ? '送信中...' : 'QRメールを再送信'}
+                      </button>
                       <button
                         onClick={() => handleCancel(r.id)}
                         disabled={cancellingId === r.id}

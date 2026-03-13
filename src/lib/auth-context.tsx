@@ -268,15 +268,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signOut = async () => {
-    try {
-      await supabase.auth.signOut();
-    } catch (e) {
-      console.error('signOut error:', e);
-    }
+    // 即座にUIをリセット
     setUser(null);
     setProfile(null);
     setFutureshopMember(null);
-    window.location.reload();
+
+    // バックグラウンドでSupabaseセッション削除
+    supabase.auth.signOut().catch(console.error);
+
+    // トップページに遷移（リロードではなくナビゲーションで高速化）
+    window.location.href = '/';
   };
 
   return (

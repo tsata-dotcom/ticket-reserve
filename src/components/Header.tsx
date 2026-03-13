@@ -4,12 +4,7 @@ import { useAuth } from '@/lib/auth-context';
 import Link from 'next/link';
 
 export default function Header() {
-  const { user, profile, signOut } = useAuth();
-
-  const displayName = profile?.display_name
-    || user?.user_metadata?.display_name
-    || user?.email
-    || '';
+  const { user, signOut } = useAuth();
 
   return (
     <header className="sticky top-0 z-50 bg-white border-b border-gray-200 shadow-sm">
@@ -22,15 +17,18 @@ export default function Header() {
           </div>
         </Link>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           {user ? (
             <>
-              <Link href="/mypage" className="text-sm text-gray-700 hover:text-primary truncate max-w-[120px]">
-                {displayName} 様
+              <Link
+                href="/mypage"
+                className="text-sm text-white bg-primary rounded-lg px-3 py-2 hover:bg-primary-dark transition-colors font-bold whitespace-nowrap"
+              >
+                マイページ
               </Link>
               <button
                 onClick={signOut}
-                className="text-sm text-gray-500 hover:text-gray-700 border border-gray-300 rounded px-3 py-1 whitespace-nowrap"
+                className="text-sm text-gray-500 hover:text-gray-700 border border-gray-300 rounded-lg px-3 py-2 whitespace-nowrap"
               >
                 ログアウト
               </button>
@@ -38,7 +36,7 @@ export default function Header() {
           ) : (
             <Link
               href="/login"
-              className="text-sm bg-primary text-white rounded px-4 py-2 hover:bg-primary-dark transition-colors"
+              className="text-sm bg-primary text-white rounded-lg px-4 py-2 hover:bg-primary-dark transition-colors font-bold"
             >
               ログイン
             </Link>

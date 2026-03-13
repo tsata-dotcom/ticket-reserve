@@ -68,7 +68,7 @@ export default function Completion({ tour, selectedDate, timeSlot, ticketCount, 
           href="/mypage"
           className="py-3 px-8 bg-primary text-white rounded-xl font-bold text-lg hover:bg-primary-dark transition-colors min-h-[48px] text-center"
         >
-          予約履歴を見る
+          マイページで予約を確認する
         </Link>
         <button
           onClick={onReset}
