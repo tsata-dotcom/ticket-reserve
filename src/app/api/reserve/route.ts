@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import QRCode from 'qrcode';
 import { TOURS } from '@/lib/types';
+import { sendMail } from '@/lib/mailer';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -131,7 +132,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '予約の作成に失敗しました' }, { status: 500 });
     }
 
-    // Send email with QR code via Resend
+    // Send email with QR code via SMTP
     try {
       const qrDataUrl = await QRCode.toDataURL(orderNo, { width: 200, margin: 2 });
       const qrBase64 = qrDataUrl.replace(/^data:image\/png;base64,/, '');
@@ -158,42 +159,30 @@ export async function POST(request: NextRequest) {
         </div>
       `;
 
-      const emailRes = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          from: 'onboarding@resend.dev',
-          to: [profile.email],
-          subject: '【かにファクトリー】体験予約のご案内',
-          html: emailHtml,
-          attachments: [
-            {
-              content: qrBase64,
-              filename: 'qrcode.png',
-              content_id: 'qrcode',
-            },
-          ],
-        }),
+      const emailResult = await sendMail({
+        to: profile.email,
+        subject: '【かにファクトリー】体験予約のご案内',
+        html: emailHtml,
+        attachments: [
+          {
+            filename: 'qrcode.png',
+            content: qrBase64,
+            encoding: 'base64',
+            cid: 'qrcode',
+          },
+        ],
       });
 
-      const emailResult = await emailRes.json();
-      console.log('Email send result:', { status: emailRes.status, result: emailResult });
+      console.log('Email send result:', { messageId: emailResult.messageId });
 
-      if (emailRes.ok) {
-        // メール送信成功 → qr_sent を更新
-        const { error: updateError } = await supabase
-          .from('reservations')
-          .update({ qr_sent: true, qr_sent_at: new Date().toISOString() })
-          .eq('id', reservation.id);
+      // メール送信成功 → qr_sent を更新
+      const { error: updateError } = await supabase
+        .from('reservations')
+        .update({ qr_sent: true, qr_sent_at: new Date().toISOString() })
+        .eq('id', reservation.id);
 
-        if (updateError) {
-          console.error('qr_sent update error:', updateError);
-        }
-      } else {
-        console.error('Email send failed:', emailResult);
+      if (updateError) {
+        console.error('qr_sent update error:', updateError);
       }
     } catch (emailError) {
       console.error('Email send error:', emailError);
