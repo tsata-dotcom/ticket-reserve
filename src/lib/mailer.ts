@@ -1,30 +1,34 @@
-import nodemailer from 'nodemailer';
-
-const transporter = nodemailer.createTransport({
-  host: 'denshoku-corp.sakura.ne.jp',
-  port: 587,
-  secure: false,
-  auth: {
-    type: 'LOGIN',
-    user: 'info@kanifactory.com',
-    pass: process.env.SMTP_PASSWORD!,
-  },
-  tls: {
-    rejectUnauthorized: false,
-  },
-});
-
 export async function sendMail(options: {
   to: string;
   subject: string;
   html: string;
-  attachments?: nodemailer.SendMailOptions['attachments'];
+  attachments?: Array<{
+    filename: string;
+    content: string;
+    content_type: string;
+    cid?: string;
+  }>;
 }) {
-  return transporter.sendMail({
-    from: '"かにファクトリー" <info@kanifactory.com>',
-    to: options.to,
-    subject: options.subject,
-    html: options.html,
-    attachments: options.attachments,
+  const response = await fetch(`${process.env.PROXY_URL}send-mail.php`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Proxy-Secret': process.env.PROXY_SECRET!,
+    },
+    body: JSON.stringify({
+      to: options.to,
+      subject: options.subject,
+      html: options.html,
+      from_name: 'かにファクトリー',
+      from_email: 'info@kanifactory.com',
+      attachments: options.attachments || [],
+    }),
   });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Mail send failed (${response.status}): ${text}`);
+  }
+
+  return response.json();
 }

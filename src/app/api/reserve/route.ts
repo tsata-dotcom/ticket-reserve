@@ -167,13 +167,13 @@ export async function POST(request: NextRequest) {
           {
             filename: 'qrcode.png',
             content: qrBase64,
-            encoding: 'base64',
+            content_type: 'image/png',
             cid: 'qrcode',
           },
         ],
       });
 
-      console.log('Email send result:', { messageId: emailResult.messageId });
+      console.log('Email send result:', emailResult);
 
       // メール送信成功 → qr_sent を更新
       const { error: updateError } = await supabase
