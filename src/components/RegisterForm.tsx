@@ -19,12 +19,12 @@ export default function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
             会員登録後、登録したメールアドレスでログインしてご予約いただけます。
           </p>
           <a
-            href="https://kanifactory.com/"
+            href="https://cctest26120203.trial.future-shop.net/p/register"
             target="_blank"
             rel="noopener noreferrer"
             className="block w-full py-3 bg-primary text-white rounded-xl font-bold text-lg hover:bg-primary-dark transition-colors min-h-[48px] text-center"
           >
-            会員登録はこちら
+            オンラインショップで会員登録する
           </a>
         </div>
 

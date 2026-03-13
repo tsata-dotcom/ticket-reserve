@@ -143,7 +143,7 @@ export default function Confirmation({ tour, selectedDate, timeSlot, ticketCount
         <div className="flex items-center gap-2 p-3 bg-gray-50 border border-gray-200 rounded-lg mb-4">
           <span className="text-gray-500 text-sm">
             オンラインショップ会員登録がまだの方は
-            <a href="https://kanifactory.com/" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline ml-1">こちら</a>
+            <a href="https://cctest26120203.trial.future-shop.net/p/register" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline ml-1">こちら</a>
           </span>
         </div>
       )}
