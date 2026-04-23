@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { TOURS } from '@/lib/types';
+import { isWithinBookingRange } from '@/lib/types';
 import { sendQrEmail } from '@/lib/qr-mail';
 
 const supabase = createClient(
@@ -43,7 +43,46 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { visit_date, time_slot, ticket_count, tour_type } = body;
+    const { visit_date, time_slot, ticket_count, tour_type, payment_method } = body;
+
+    if (!visit_date || !time_slot || !ticket_count || !tour_type) {
+      return NextResponse.json({ error: '必要な項目が不足しています' }, { status: 400 });
+    }
+
+    if (time_slot !== 'AM' && time_slot !== 'PM') {
+      return NextResponse.json({ error: '時間帯の指定が不正です' }, { status: 400 });
+    }
+
+    // 予約可能日のサーバー側バリデーション（本日+2日 〜 本日+1ヶ月）
+    if (!isWithinBookingRange(visit_date)) {
+      return NextResponse.json(
+        { error: 'ご予約は2日後から1ヶ月先までの日付をお選びください' },
+        { status: 400 }
+      );
+    }
+
+    // tour_types からコース情報を取得（price/max_per_booking/is_first_free）
+    const { data: tourRecord, error: tourFetchError } = await supabase
+      .from('tour_types')
+      .select('slug, name, price, max_per_booking, is_first_free, is_active')
+      .eq('slug', tour_type)
+      .maybeSingle();
+
+    if (tourFetchError) {
+      console.error('tour_types fetch error:', tourFetchError);
+    }
+
+    if (!tourRecord || !tourRecord.is_active) {
+      return NextResponse.json({ error: '指定された体験コースが見つかりません' }, { status: 400 });
+    }
+
+    const count = Math.max(1, Math.floor(Number(ticket_count)));
+    if (count > (tourRecord.max_per_booking || 1)) {
+      return NextResponse.json(
+        { error: `1予約あたり最大${tourRecord.max_per_booking}名までです` },
+        { status: 400 }
+      );
+    }
 
     // サーバー側で初回無料判定（クライアントの値を信用しない）
     const { data: existingFreeReservations, error: checkError } = await supabase
@@ -59,10 +98,18 @@ export async function POST(request: NextRequest) {
     }
 
     const isFirstTime = !existingFreeReservations || existingFreeReservations.length === 0;
-    const tourInfo = TOURS.find(t => t.name === tour_type);
-    const tourPrice = tourInfo?.price || 0;
-    const unit_price = isFirstTime ? 0 : tourPrice;
-    const total_amount = unit_price * ticket_count;
+    const applyFirstFree = !!tourRecord.is_first_free && isFirstTime;
+    const unit_price = applyFirstFree ? 0 : tourRecord.price;
+    const total_amount = unit_price * count;
+
+    // 決済未対応: 現状は無料ルートのみ予約確定を許可する。
+    const finalPaymentMethod = applyFirstFree ? 'free' : (payment_method || 'free');
+    if (finalPaymentMethod !== 'free') {
+      return NextResponse.json(
+        { error: '現在クレジットカード決済は準備中です' },
+        { status: 400 }
+      );
+    }
 
     // Get customer profile
     const { data: existingProfile, error: profileFetchError } = await supabase
@@ -77,7 +124,6 @@ export async function POST(request: NextRequest) {
 
     let profile = existingProfile;
 
-    // プロフィールがなければuser_metadataから自動作成
     if (!profile) {
       console.log('Profile not found, creating from user_metadata for user:', user.id);
       const meta = user.user_metadata;
@@ -115,13 +161,14 @@ export async function POST(request: NextRequest) {
         buyer_phone: profile.phone,
         visit_date,
         time_slot,
-        ticket_count,
-        tour_type,
+        ticket_count: count,
+        tour_type: tourRecord.slug,
         unit_price,
         total_amount,
         customer_id: user.id,
         booking_source: 'web',
         status: 'reserved',
+        payment_method: finalPaymentMethod,
       })
       .select()
       .single();
@@ -131,22 +178,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '予約の作成に失敗しました' }, { status: 500 });
     }
 
-    // Send email with QR code
+    // メールにはスラッグではなく表示名を渡す
     try {
       const emailResult = await sendQrEmail({
         to: profile.email,
         displayName: profile.display_name,
         orderNo,
-        tourType: tour_type,
+        tourType: tourRecord.name,
         visitDate: visit_date,
         timeSlot: time_slot,
-        ticketCount: ticket_count,
+        ticketCount: count,
         totalAmount: total_amount,
       });
 
       console.log('Email send result:', emailResult);
 
-      // メール送信成功 → qr_sent を更新
       const { error: updateError } = await supabase
         .from('reservations')
         .update({ qr_sent: true, qr_sent_at: new Date().toISOString() })
@@ -157,7 +203,6 @@ export async function POST(request: NextRequest) {
       }
     } catch (emailError) {
       console.error('Email send error:', emailError);
-      // Don't fail the reservation if email fails
     }
 
     return NextResponse.json({ reservation });

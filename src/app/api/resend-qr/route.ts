@@ -41,12 +41,22 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '権限がありません' }, { status: 403 });
     }
 
+    // tour_type は新規予約ではスラッグ（例: karamuki-tour）が入るため、
+    // 表示用にコース名を解決する。見つからなければ生の値をそのまま使う。
+    let tourTypeLabel: string = reservation.tour_type;
+    const { data: tourRecord } = await supabase
+      .from('tour_types')
+      .select('name')
+      .eq('slug', reservation.tour_type)
+      .maybeSingle();
+    if (tourRecord?.name) tourTypeLabel = tourRecord.name;
+
     // QRメール再送信
     const emailResult = await sendQrEmail({
       to: reservation.buyer_email,
       displayName: reservation.buyer_name,
       orderNo: reservation.order_no,
-      tourType: reservation.tour_type,
+      tourType: tourTypeLabel,
       visitDate: reservation.visit_date,
       timeSlot: reservation.time_slot,
       ticketCount: reservation.ticket_count,

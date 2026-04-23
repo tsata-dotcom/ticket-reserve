@@ -1,10 +1,10 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
-import { TourInfo } from '@/lib/types';
+import { TourUIRecord } from '@/lib/types';
 
 interface TimeSlotSelectorProps {
-  tour: TourInfo;
+  tour: TourUIRecord;
   selectedDate: string;
   onBack: () => void;
   onNext: (timeSlot: 'AM' | 'PM', count: number) => void;
@@ -32,7 +32,7 @@ export default function TimeSlotSelector({ tour, selectedDate, onBack, onNext, i
       setLoading(true);
       const d = new Date(selectedDate);
       const res = await fetch(
-        `/api/availability?year=${d.getFullYear()}&month=${d.getMonth() + 1}&tour_type=${encodeURIComponent(tour.name)}`
+        `/api/availability?year=${d.getFullYear()}&month=${d.getMonth() + 1}&tour_type=${encodeURIComponent(tour.slug)}`
       );
       const data = await res.json();
       const dayAvail = data.availability?.[selectedDate];
@@ -43,7 +43,7 @@ export default function TimeSlotSelector({ tour, selectedDate, onBack, onNext, i
       setLoading(false);
     };
     fetchSlots();
-  }, [selectedDate, tour.name]);
+  }, [selectedDate, tour.slug]);
 
   useEffect(() => {
     if (selectedSlot) {
@@ -51,11 +51,14 @@ export default function TimeSlotSelector({ tour, selectedDate, onBack, onNext, i
     }
   }, [selectedSlot, count]);
 
-  const maxCount = selectedSlot === 'AM'
+  const slotRemaining = selectedSlot === 'AM'
     ? amAvail?.remaining || 0
     : selectedSlot === 'PM'
     ? pmAvail?.remaining || 0
-    : 1;
+    : 0;
+
+  // Cap by per-booking limit from tour_types.
+  const maxCount = selectedSlot ? Math.max(1, Math.min(tour.max_per_booking || 1, slotRemaining)) : 1;
 
   const handleSlotSelect = (slot: 'AM' | 'PM') => {
     setSelectedSlot(slot);
@@ -172,7 +175,9 @@ export default function TimeSlotSelector({ tour, selectedDate, onBack, onNext, i
               ＋
             </button>
           </div>
-          <p className="text-center text-sm text-gray-500 mt-2">最大 {maxCount}名</p>
+          <p className="text-center text-sm text-gray-500 mt-2">
+            1予約あたり最大 {tour.max_per_booking}名まで（残り{slotRemaining}枠）
+          </p>
 
           {/* Price display */}
           <div className="mt-4 p-4 bg-gray-50 rounded-xl text-center">
@@ -180,9 +185,11 @@ export default function TimeSlotSelector({ tour, selectedDate, onBack, onNext, i
               ¥{(tour.price * count).toLocaleString()}
             </p>
             <p className="text-sm text-gray-500">(¥{tour.price.toLocaleString()} × {count}名)</p>
-            <span className="inline-block mt-2 bg-red-500 text-white text-sm px-3 py-1 rounded-full font-bold">
-              🎉 初回のお客様は無料！
-            </span>
+            {tour.is_first_free && (
+              <span className="inline-block mt-2 bg-red-500 text-white text-sm px-3 py-1 rounded-full font-bold">
+                🎉 初回のお客様は無料！
+              </span>
+            )}
           </div>
 
           {/* Action buttons */}

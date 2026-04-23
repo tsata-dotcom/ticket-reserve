@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { AuthProvider, useAuth } from '@/lib/auth-context';
-import { TOURS, TourType } from '@/lib/types';
+import { TourTypeRecord, toTourUI } from '@/lib/types';
 import Header from '@/components/Header';
 import StepIndicator from '@/components/StepIndicator';
 import TourSelector from '@/components/TourSelector';
@@ -16,7 +16,7 @@ import Completion from '@/components/Completion';
 function ReservationFlow() {
   const { user, loading } = useAuth();
   const [step, setStep] = useState(0);
-  const [selectedTour, setSelectedTour] = useState<TourType | null>(null);
+  const [selectedTour, setSelectedTour] = useState<TourTypeRecord | null>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [timeSlot, setTimeSlot] = useState<'AM' | 'PM' | null>(null);
   const [ticketCount, setTicketCount] = useState(1);
@@ -40,7 +40,7 @@ function ReservationFlow() {
     }
   }, [step]);
 
-  const handleTourSelect = (tour: TourType) => {
+  const handleTourSelect = (tour: TourTypeRecord) => {
     setSelectedTour(tour);
     setSelectedDate(null);
   };
@@ -53,7 +53,6 @@ function ReservationFlow() {
   const handleTimeSlotNext = (slot: 'AM' | 'PM', count: number) => {
     setTimeSlot(slot);
     setTicketCount(count);
-    // ログイン済みならステップ3（予約確認）へ、未ログインならステップ2（ログイン）へ
     if (user) {
       setStep(3);
     } else {
@@ -62,7 +61,6 @@ function ReservationFlow() {
   };
 
   const handleLoginSuccess = () => {
-    // ログイン/登録成功 → ステップ3（予約確認）へ
     setStep(3);
   };
 
@@ -82,7 +80,7 @@ function ReservationFlow() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const tour = selectedTour ? TOURS.find(t => t.name === selectedTour)! : null;
+  const tour = useMemo(() => (selectedTour ? toTourUI(selectedTour) : null), [selectedTour]);
 
   return (
     <>
@@ -94,11 +92,14 @@ function ReservationFlow() {
           {/* STEP 0: Tour + Calendar */}
           {step === 0 && (
             <div>
-              <TourSelector selectedTour={selectedTour} onSelect={handleTourSelect} />
+              <TourSelector
+                selectedSlug={selectedTour?.slug ?? null}
+                onSelect={handleTourSelect}
+              />
 
               {selectedTour && (
                 <Calendar
-                  tourType={selectedTour}
+                  tourSlug={selectedTour.slug}
                   onSelectDate={handleDateSelect}
                   selectedDate={selectedDate}
                 />

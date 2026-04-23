@@ -11,10 +11,25 @@ function MyPageContent() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const [reservations, setReservations] = useState<Reservation[]>([]);
+  const [tourNameMap, setTourNameMap] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [resendingId, setResendingId] = useState<string | null>(null);
   const [toast, setToast] = useState('');
+
+  useEffect(() => {
+    const fetchTours = async () => {
+      const { data } = await supabase.from('tour_types').select('slug, name');
+      if (data) {
+        const map: Record<string, string> = {};
+        for (const t of data) map[t.slug] = t.name;
+        setTourNameMap(map);
+      }
+    };
+    fetchTours();
+  }, []);
+
+  const tourLabel = (slug: string) => tourNameMap[slug] || slug;
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -152,7 +167,7 @@ function MyPageContent() {
                   <div key={r.id} className="bg-white border border-gray-200 rounded-xl p-4">
                     <div className="flex items-start justify-between mb-2">
                       <div>
-                        <p className="font-bold text-gray-800">{r.tour_type}</p>
+                        <p className="font-bold text-gray-800">{tourLabel(r.tour_type)}</p>
                         <p className="text-sm text-gray-500">{r.visit_date.replace(/-/g, '/')} {timeSlotLabel(r.time_slot)}</p>
                       </div>
                       <span className={`text-xs px-2 py-1 rounded-full font-bold ${s.color}`}>{s.text}</span>
@@ -194,7 +209,7 @@ function MyPageContent() {
                   <div key={r.id} className="bg-white border border-gray-200 rounded-xl p-4 opacity-70">
                     <div className="flex items-start justify-between mb-2">
                       <div>
-                        <p className="font-bold text-gray-800">{r.tour_type}</p>
+                        <p className="font-bold text-gray-800">{tourLabel(r.tour_type)}</p>
                         <p className="text-sm text-gray-500">{r.visit_date.replace(/-/g, '/')} {timeSlotLabel(r.time_slot)}</p>
                       </div>
                       <span className={`text-xs px-2 py-1 rounded-full font-bold ${s.color}`}>{s.text}</span>

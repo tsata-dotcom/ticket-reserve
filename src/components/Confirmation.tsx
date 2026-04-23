@@ -2,11 +2,11 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth-context';
-import { TourInfo } from '@/lib/types';
+import { SiteContent, TourUIRecord } from '@/lib/types';
 import { supabase } from '@/lib/supabase';
 
 interface ConfirmationProps {
-  tour: TourInfo;
+  tour: TourUIRecord;
   selectedDate: string;
   timeSlot: 'AM' | 'PM';
   ticketCount: number;
@@ -20,6 +20,8 @@ export default function Confirmation({ tour, selectedDate, timeSlot, ticketCount
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [policy, setPolicy] = useState<SiteContent | null>(null);
+  const [agreed, setAgreed] = useState(false);
 
   const isFutureshopLinked = !!futureshopMember || !!profile?.futureshop_member_id;
 
@@ -64,10 +66,27 @@ export default function Confirmation({ tour, selectedDate, timeSlot, ticketCount
     checkFirstTime();
   }, [user]);
 
-  const unitPrice = isFirstTime ? 0 : tour.price;
+  useEffect(() => {
+    const fetchPolicy = async () => {
+      const { data, error: fetchError } = await supabase
+        .from('site_content')
+        .select('content_key, title, body')
+        .eq('content_key', 'cancellation_policy')
+        .maybeSingle();
+      if (fetchError) {
+        console.error('cancellation policy fetch error:', fetchError);
+      }
+      if (data) setPolicy(data as SiteContent);
+    };
+    fetchPolicy();
+  }, []);
+
+  // Free only when the tour itself is flagged first-free AND user has no prior free booking.
+  const freePrice = !!tour.is_first_free && isFirstTime === true;
+  const unitPrice = freePrice ? 0 : tour.price;
   const totalAmount = unitPrice * ticketCount;
 
-  const handleReserve = async () => {
+  const createReservation = async (paymentMethod: 'free' | 'card') => {
     setSubmitting(true);
     setError('');
 
@@ -76,10 +95,8 @@ export default function Confirmation({ tour, selectedDate, timeSlot, ticketCount
       if (!session) {
         setError('セッションが切れました。再度ログインしてください。');
         setSubmitting(false);
-        return;
+        return null;
       }
-
-      console.log('Reserve: sending request');
 
       const res = await fetch('/api/reserve', {
         method: 'POST',
@@ -91,31 +108,46 @@ export default function Confirmation({ tour, selectedDate, timeSlot, ticketCount
           visit_date: selectedDate,
           time_slot: timeSlot,
           ticket_count: ticketCount,
-          tour_type: tour.name,
-          unit_price: unitPrice,
-          total_amount: totalAmount,
+          tour_type: tour.slug,
+          payment_method: paymentMethod,
         }),
       });
 
       const data = await res.json();
-      console.log('Reserve: response', { ok: res.ok, data });
 
       if (!res.ok) {
         setError(data.error || '予約に失敗しました');
         setSubmitting(false);
-        return;
+        return null;
       }
 
-      onComplete(data.reservation.order_no);
+      return data.reservation;
     } catch (e) {
       console.error('Reserve: unexpected error', e);
       setError('予約処理中にエラーが発生しました');
       setSubmitting(false);
+      return null;
     }
   };
 
+  const handleFreeReserve = async () => {
+    const reservation = await createReservation('free');
+    if (reservation) onComplete(reservation.order_no);
+  };
+
   const handlePayment = () => {
-    alert('決済機能は現在準備中です。恐れ入りますが、お電話にてお問い合わせください。');
+    // TODO(SBペイメント): 審査完了後、ここでリンク型決済画面へリダイレクト。
+    //   手順: /api/reserve で仮予約作成(payment_method='card', status='pending_payment') →
+    //          SBペイメントの決済URLを発行して location.href で遷移 →
+    //          成功コールバックで payment_authorized_at を更新し status='reserved'。
+    console.log('[payment placeholder]', {
+      slug: tour.slug,
+      amount: totalAmount,
+      ticket_count: ticketCount,
+      visit_date: selectedDate,
+      time_slot: timeSlot,
+    });
+    alert('決済機能は準備中です。恐れ入りますが、お電話にてお問い合わせください。');
   };
 
   if (loading) {
@@ -175,13 +207,12 @@ export default function Confirmation({ tour, selectedDate, timeSlot, ticketCount
           <span className="text-gray-500">メール</span>
           <span className="font-bold text-sm">{displayEmail}</span>
         </div>
-        {displayPhone && (
+        {displayPhone ? (
           <div className="flex justify-between">
             <span className="text-gray-500">電話番号</span>
             <span className="font-bold">{displayPhone}</span>
           </div>
-        )}
-        {!displayPhone && (
+        ) : (
           <div className="flex justify-between">
             <span className="text-gray-500">電話番号</span>
             <span className="text-gray-400 text-sm">未登録</span>
@@ -191,7 +222,7 @@ export default function Confirmation({ tour, selectedDate, timeSlot, ticketCount
 
       {/* Price section */}
       <div className="mt-6">
-        {isFirstTime ? (
+        {freePrice ? (
           <div className="bg-green-50 border border-green-200 rounded-xl p-5 text-center">
             <p className="text-lg font-bold text-green-700">🎉 初回無料</p>
             <p className="text-3xl font-bold text-green-700 mt-1">¥0</p>
@@ -203,6 +234,31 @@ export default function Confirmation({ tour, selectedDate, timeSlot, ticketCount
           </div>
         )}
       </div>
+
+      {/* Cancellation policy */}
+      {policy && (
+        <div className="mt-6 border border-gray-200 rounded-xl p-5 bg-white">
+          {policy.title && (
+            <h3 className="font-bold text-gray-800 mb-2">{policy.title}</h3>
+          )}
+          {policy.body && (
+            <p className="text-sm text-gray-700 whitespace-pre-line leading-relaxed">
+              {policy.body}
+            </p>
+          )}
+          <label className="mt-4 flex items-start gap-2 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              className="mt-1 w-4 h-4"
+              checked={agreed}
+              onChange={(e) => setAgreed(e.target.checked)}
+            />
+            <span className="text-sm text-gray-800 font-bold">
+              上記キャンセルポリシーに同意する
+            </span>
+          </label>
+        </div>
+      )}
 
       {error && (
         <div className="mt-4 p-3 bg-red-50 text-red-600 rounded-lg text-sm">{error}</div>
@@ -216,20 +272,21 @@ export default function Confirmation({ tour, selectedDate, timeSlot, ticketCount
         >
           ← 戻る
         </button>
-        {isFirstTime ? (
+        {freePrice ? (
           <button
-            onClick={handleReserve}
-            disabled={submitting}
-            className="flex-1 py-3 bg-green-600 text-white rounded-xl font-bold text-lg hover:bg-green-700 transition-colors disabled:opacity-50 min-h-[48px]"
+            onClick={handleFreeReserve}
+            disabled={submitting || (!!policy && !agreed)}
+            className="flex-1 py-3 bg-green-600 text-white rounded-xl font-bold text-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed min-h-[48px]"
           >
             {submitting ? '予約中...' : '予約を確定する'}
           </button>
         ) : (
           <button
             onClick={handlePayment}
-            className="flex-1 py-3 bg-primary text-white rounded-xl font-bold text-lg hover:bg-primary-dark transition-colors min-h-[48px]"
+            disabled={!!policy && !agreed}
+            className="flex-1 py-3 bg-primary text-white rounded-xl font-bold text-lg hover:bg-primary-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed min-h-[48px]"
           >
-            決済ページへ進む
+            クレジットカードでお支払い
           </button>
         )}
       </div>

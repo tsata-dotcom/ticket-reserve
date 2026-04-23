@@ -2,11 +2,11 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { TourInfo } from '@/lib/types';
+import { TourUIRecord } from '@/lib/types';
 import QRCode from 'qrcode';
 
 interface CompletionProps {
-  tour: TourInfo;
+  tour: TourUIRecord;
   selectedDate: string;
   timeSlot: 'AM' | 'PM';
   ticketCount: number;
