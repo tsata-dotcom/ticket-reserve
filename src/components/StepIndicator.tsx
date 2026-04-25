@@ -1,6 +1,11 @@
 'use client';
 
-const STEPS = [
+export interface Step {
+  label: string;
+  num: string;
+}
+
+const DEFAULT_STEPS: Step[] = [
   { label: '体験を選ぶ', num: '❶' },
   { label: '日時を選ぶ', num: '❷' },
   { label: 'メール認証', num: '❸' },
@@ -10,12 +15,13 @@ const STEPS = [
 
 interface StepIndicatorProps {
   currentStep: number;
+  steps?: Step[];
 }
 
-export default function StepIndicator({ currentStep }: StepIndicatorProps) {
+export default function StepIndicator({ currentStep, steps = DEFAULT_STEPS }: StepIndicatorProps) {
   return (
     <div className="flex items-center justify-center gap-1 py-4 px-2 overflow-x-auto">
-      {STEPS.map((step, index) => {
+      {steps.map((step, index) => {
         const isCompleted = index < currentStep;
         const isCurrent = index === currentStep;
 
@@ -41,7 +47,7 @@ export default function StepIndicator({ currentStep }: StepIndicatorProps) {
                 {step.label}
               </span>
             </div>
-            {index < STEPS.length - 1 && (
+            {index < steps.length - 1 && (
               <div
                 className={`w-4 md:w-8 h-0.5 mt-[-12px] ${
                   index < currentStep ? 'bg-green-500' : 'bg-gray-200'
