@@ -18,8 +18,22 @@ export default function LoginForm({ onSuccess, onSwitchToRegister }: LoginFormPr
   const [loading, setLoading] = useState(false);
   const [formState, setFormState] = useState<FormState>('email');
   const [resending, setResending] = useState(false);
+  const [lastOtpSentAt, setLastOtpSentAt] = useState<number | null>(null);
+  const [cooldownRemaining, setCooldownRemaining] = useState(0);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const otpInputRef = useRef<HTMLInputElement>(null);
+
+  // 60秒クールダウンのカウントダウン
+  useEffect(() => {
+    if (!lastOtpSentAt) return;
+    const tick = () => {
+      const elapsed = Math.floor((Date.now() - lastOtpSentAt) / 1000);
+      setCooldownRemaining(Math.max(0, 60 - elapsed));
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [lastOtpSentAt]);
 
   // ユーザーが認証されたらonSuccess
   useEffect(() => {
@@ -63,6 +77,7 @@ export default function LoginForm({ onSuccess, onSwitchToRegister }: LoginFormPr
       } else if (result.otpSent) {
         setFormState('otp');
         setOtpCode('');
+        setLastOtpSentAt(Date.now());
       }
     } catch (e) {
       console.error('Login: unexpected error', e);
@@ -105,6 +120,7 @@ export default function LoginForm({ onSuccess, onSwitchToRegister }: LoginFormPr
       } else {
         setOtpCode('');
         setError('');
+        setLastOtpSentAt(Date.now());
       }
     } catch (e) {
       console.error('Resend: unexpected error', e);
@@ -212,10 +228,14 @@ export default function LoginForm({ onSuccess, onSwitchToRegister }: LoginFormPr
           <div className="mt-6 text-center space-y-3">
             <button
               onClick={handleResend}
-              disabled={resending}
-              className="text-primary hover:underline font-bold text-sm disabled:opacity-50"
+              disabled={resending || cooldownRemaining > 0}
+              className="text-primary hover:underline font-bold text-sm disabled:opacity-50 disabled:no-underline disabled:hover:no-underline"
             >
-              {resending ? '送信中...' : 'コードを再送信する'}
+              {resending
+                ? '送信中...'
+                : cooldownRemaining > 0
+                  ? `あと${cooldownRemaining}秒お待ちください`
+                  : 'コードを再送信する'}
             </button>
             <br />
             <button
@@ -227,7 +247,8 @@ export default function LoginForm({ onSuccess, onSwitchToRegister }: LoginFormPr
           </div>
 
           <p className="text-gray-400 text-xs text-center mt-4">
-            メールが届かない場合は、迷惑メールフォルダをご確認ください。
+            認証コードが届かない場合は60秒後に再送信できます。<br />
+            メールが届かない場合は、迷惑メールフォルダもご確認ください。
           </p>
         </div>
       </div>
@@ -270,7 +291,7 @@ export default function LoginForm({ onSuccess, onSwitchToRegister }: LoginFormPr
 
         <button
           type="submit"
-          disabled={loading}
+          disabled={loading || cooldownRemaining > 0}
           className="w-full py-3 bg-primary text-white rounded-xl font-bold text-lg hover:bg-primary-dark transition-colors disabled:opacity-50 min-h-[48px] flex items-center justify-center gap-2"
         >
           {loading ? (
@@ -281,6 +302,8 @@ export default function LoginForm({ onSuccess, onSwitchToRegister }: LoginFormPr
               </svg>
               確認中...
             </>
+          ) : cooldownRemaining > 0 ? (
+            `あと${cooldownRemaining}秒お待ちください`
           ) : '認証コードを送信する'}
         </button>
       </form>
