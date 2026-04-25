@@ -6,7 +6,18 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-const DEFAULT_CAPACITY = 20;
+// 最終フォールバック。tour_types.default_capacity も time_slot_settings も
+// 取得できない場合だけ使う。
+const FALLBACK_CAPACITY = 20;
+
+// time_slot_settings.date は DATE 型なら 'YYYY-MM-DD'、TIMESTAMP/TIMESTAMPTZ 型なら
+// ISO 8601 ('YYYY-MM-DDTHH:mm:ss+09:00' 等) で返るため、先頭10文字で正規化して比較する。
+// 厳密一致 (s.date === dateStr) のままだと TIMESTAMP 型のときに find が常に外れ、
+// 設定済み定員が読めず DEFAULT_CAPACITY にフォールバックしてしまう不具合になる。
+function normalizeDateString(value: unknown): string {
+  if (typeof value !== 'string') return '';
+  return value.slice(0, 10);
+}
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -21,6 +32,19 @@ export async function GET(request: NextRequest) {
   const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
   const lastDay = new Date(year, month, 0).getDate();
   const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+
+  // tour_types からデフォルト定員を取得（time_slot_settings に該当行がない時の既定値）。
+  // SELECT * しておけば default_capacity 列が無いスキーマでもエラーにならず、
+  // undefined となって最終フォールバックに落ちる。
+  const { data: tourRecord } = await supabase
+    .from('tour_types')
+    .select('*')
+    .eq('slug', tourType)
+    .maybeSingle();
+
+  const tourDefault = (tourRecord as { default_capacity?: number | null } | null)?.default_capacity;
+  const tourDefaultCapacity: number =
+    typeof tourDefault === 'number' && Number.isFinite(tourDefault) ? tourDefault : FALLBACK_CAPACITY;
 
   // Get reservations for the month
   const { data: reservations } = await supabase
@@ -44,13 +68,17 @@ export async function GET(request: NextRequest) {
   for (let day = 1; day <= lastDay; day++) {
     const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 
-    const amSetting = settings?.find(s => s.date === dateStr && s.time_slot === 'AM');
-    const pmSetting = settings?.find(s => s.date === dateStr && s.time_slot === 'PM');
+    const amSetting = settings?.find(
+      s => normalizeDateString(s.date) === dateStr && s.time_slot === 'AM'
+    );
+    const pmSetting = settings?.find(
+      s => normalizeDateString(s.date) === dateStr && s.time_slot === 'PM'
+    );
 
     const amClosed = amSetting?.is_closed ?? false;
     const pmClosed = pmSetting?.is_closed ?? false;
-    const amCapacity = amSetting?.capacity ?? DEFAULT_CAPACITY;
-    const pmCapacity = pmSetting?.capacity ?? DEFAULT_CAPACITY;
+    const amCapacity = amSetting?.capacity ?? tourDefaultCapacity;
+    const pmCapacity = pmSetting?.capacity ?? tourDefaultCapacity;
 
     const amReserved = (reservations || [])
       .filter(r => r.visit_date === dateStr && r.time_slot === 'AM')
