@@ -195,24 +195,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const sendOtp = async (email: string): Promise<OtpResult> => {
     try {
-      // 1. Futureshop会員チェック
+      // 1. Futureshop会員チェック（必ずOTP送信より先に実行）
+      console.log('[sendOtp] member-check開始:', email);
       const checkRes = await fetch('/api/futureshop/member-check', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email }),
       });
 
-      if (!checkRes.ok) {
+      let checkData: { exists?: boolean; error?: string } | null = null;
+      try {
+        checkData = await checkRes.json();
+      } catch (e) {
+        console.error('[sendOtp] member-checkレスポンスJSONパース失敗:', e);
+      }
+
+      console.log('[sendOtp] member-check結果:', {
+        status: checkRes.status,
+        ok: checkRes.ok,
+        data: checkData,
+      });
+
+      // member-check API自体のエラー（ステータスNG or レスポンス不正）
+      if (!checkRes.ok || !checkData || typeof checkData.exists !== 'boolean') {
         return { success: false, error: 'Futureshop会員確認に失敗しました。しばらく経ってから再度お試しください。' };
       }
 
-      const checkData = await checkRes.json();
-
-      if (!checkData.exists) {
+      // 会員が見つからない（exists: false）→ 会員登録案内へ
+      if (checkData.exists === false) {
+        console.log('[sendOtp] 未会員のためnotFsMemberを返却');
         return { success: false, notFsMember: true };
       }
 
-      // 2. OTPコード送信（emailRedirectToを指定しない → コード入力方式）
+      // 2. 会員確認OK → OTPコード送信（emailRedirectToを指定しない → コード入力方式）
+      console.log('[sendOtp] 会員確認OK、OTP送信開始');
       const { error } = await supabase.auth.signInWithOtp({
         email,
         options: {

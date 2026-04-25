@@ -69,6 +69,7 @@ export default function LoginForm({ onSuccess, onSwitchToRegister }: LoginFormPr
 
     try {
       const result = await sendOtp(email);
+      console.log('[LoginForm] sendOtp結果:', result);
 
       if (result.notFsMember) {
         setFormState('notFsMember');
