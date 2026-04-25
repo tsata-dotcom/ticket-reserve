@@ -135,6 +135,107 @@ export async function searchMemberByEmail(email: string): Promise<FutureshopMemb
 }
 
 /**
+ * ページネーション付きで会員一覧を取得し、メールでフィルタリング
+ * - createDateStart があれば差分取得、なければ全件
+ * - maxPages または timeoutMs に達したら打ち切り
+ */
+export async function fetchMembersWithFallback(params: {
+  email: string;
+  createDateStart?: string;
+  maxPages?: number;
+  pageSize?: number;
+  timeoutMs?: number;
+}): Promise<{
+  found: FutureshopMember | null;
+  pagesFetched: number;
+  totalScanned: number;
+  timedOut: boolean;
+  pagesLimitReached: boolean;
+}> {
+  const maxPages = params.maxPages ?? 20;
+  const pageSize = params.pageSize ?? 100;
+  const timeoutMs = params.timeoutMs ?? 25000;
+  const searchEmail = params.email.trim().toLowerCase();
+  const startedAt = Date.now();
+
+  const token = await getAccessToken();
+
+  let offset = 0;
+  let pagesFetched = 0;
+  let totalScanned = 0;
+  let timedOut = false;
+  let pagesLimitReached = false;
+  let found: FutureshopMember | null = null;
+
+  for (let page = 0; page < maxPages; page++) {
+    if (Date.now() - startedAt > timeoutMs) {
+      console.log(`[Futureshop] Timeout (${timeoutMs}ms) reached after ${pagesFetched} pages`);
+      timedOut = true;
+      break;
+    }
+
+    const queryParams = new URLSearchParams();
+    queryParams.set('limit', String(pageSize));
+    queryParams.set('offset', String(offset));
+    if (params.createDateStart) {
+      queryParams.set('createDateStart', params.createDateStart);
+    }
+
+    const requestUrl = `https://${getApiDomain()}/admin-api/v1/member?${queryParams.toString()}`;
+    console.log(`[Futureshop] Fetch page ${page + 1}/${maxPages}: ${requestUrl}`);
+
+    const rawData = await proxyRequest({
+      method: 'GET',
+      url: requestUrl,
+      headers: {
+        'X-SHOP-KEY': getShopKey(),
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+    const data = unwrapProxyResponse(rawData);
+
+    const memberArray = data.memberList || data.members;
+    const pageCount = memberArray?.length ?? 0;
+    totalScanned += pageCount;
+    pagesFetched++;
+
+    console.log(`[Futureshop] Page ${page + 1}: got ${pageCount} members (total scanned: ${totalScanned})`);
+
+    if (pageCount === 0) {
+      break;
+    }
+
+    const m = memberArray.find((item: any) => {
+      const itemMail = String(item.mail || item.email || '').trim().toLowerCase();
+      return itemMail === searchEmail;
+    });
+
+    if (m) {
+      found = {
+        memberId: m.memberId || m.member_id,
+        lastName: m.lastName || m.last_name || '',
+        firstName: m.firstName || m.first_name || '',
+        mail: m.mail || m.email || '',
+        telNoMain: m.telNoMain || m.tel_no_main || '',
+      };
+      break;
+    }
+
+    if (pageCount < pageSize) {
+      break;
+    }
+
+    offset += pageSize;
+  }
+
+  if (pagesFetched >= maxPages && !found) {
+    pagesLimitReached = true;
+  }
+
+  return { found, pagesFetched, totalScanned, timedOut, pagesLimitReached };
+}
+
+/**
  * 受注検索API（将来用）
  */
 export async function searchOrders(params: { memberId?: string; orderDateFrom?: string; orderDateTo?: string }) {
