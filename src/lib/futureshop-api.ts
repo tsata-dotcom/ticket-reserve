@@ -238,6 +238,7 @@ export async function fetchMembersWithFallback(params: {
           firstName: m.firstName || m.first_name || '',
           mail: m.mail || m.email || '',
           telNoMain: m.telNoMain || m.tel_no_main || '',
+          dateRegistered: m.dateRegistered || m.date_registered || undefined,
         };
         break;
       }
@@ -312,4 +313,5 @@ export interface FutureshopMember {
   firstName: string;
   mail: string;
   telNoMain: string;
+  dateRegistered?: string;
 }

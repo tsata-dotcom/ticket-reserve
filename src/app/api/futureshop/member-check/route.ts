@@ -107,6 +107,7 @@ export async function POST(req: NextRequest) {
         email: normalizedEmail,
         last_name: m.lastName,
         first_name: m.firstName,
+        date_registered: m.dateRegistered ?? null,
         cached_at: new Date().toISOString(),
       });
       if (insertErr) {
