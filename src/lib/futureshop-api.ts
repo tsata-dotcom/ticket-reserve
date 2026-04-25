@@ -69,11 +69,16 @@ export async function getAccessToken(): Promise<string> {
 export async function searchMemberByEmail(email: string): Promise<FutureshopMember | null> {
   const token = await getAccessToken();
 
-  console.log(`[Futureshop] Searching member by email: ${email}`);
+  const searchEmail = email.trim().toLowerCase();
+  console.log(`[Futureshop] Searching member by email: "${searchEmail}" (original="${email}")`);
+
+  // limit パラメータを大きく指定（本番で会員数が多い場合のページネーション対策）
+  const requestUrl = `https://${getApiDomain()}/admin-api/v1/member?mail=${encodeURIComponent(searchEmail)}&limit=1000`;
+  console.log(`[Futureshop] Request URL: ${requestUrl}`);
 
   const rawData = await proxyRequest({
     method: 'GET',
-    url: `https://${getApiDomain()}/admin-api/v1/member?mail=${encodeURIComponent(email)}`,
+    url: requestUrl,
     headers: {
       'X-SHOP-KEY': getShopKey(),
       'Authorization': `Bearer ${token}`,
@@ -81,13 +86,28 @@ export async function searchMemberByEmail(email: string): Promise<FutureshopMemb
   });
   const data = unwrapProxyResponse(rawData);
 
-  console.log('[Futureshop] Member search response:', JSON.stringify(data));
+  console.log('[Futureshop] Raw proxy response type:', typeof rawData, 'keys:', rawData && typeof rawData === 'object' ? Object.keys(rawData) : 'n/a');
+  console.log('[Futureshop] Unwrapped response top-level keys:', data && typeof data === 'object' ? Object.keys(data) : 'n/a');
+  console.log('[Futureshop] Full unwrapped response:', JSON.stringify(data).slice(0, 5000));
 
   // APIレスポンスから会員情報を抽出（memberList が実際のキー）
   // APIがmailフィルターを無視して全件返す場合があるため、クライアント側でメール一致を確認
   const memberArray = data.memberList || data.members;
+  console.log(`[Futureshop] memberArray source: ${data.memberList ? 'memberList' : data.members ? 'members' : 'none'}, length: ${memberArray?.length ?? 0}`);
+  console.log(`[Futureshop] Pagination info - total: ${data.total ?? 'n/a'}, count: ${data.count ?? 'n/a'}, hasMore: ${data.hasMore ?? 'n/a'}, nextPageToken: ${data.nextPageToken ?? 'n/a'}`);
+
   if (memberArray && memberArray.length > 0) {
-    const m = memberArray.find((item: any) => (item.mail || item.email) === email) || null;
+    // サンプルとして先頭5件のメールアドレスを出力
+    const sampleMails = memberArray.slice(0, 5).map((item: any) => item.mail || item.email);
+    console.log(`[Futureshop] Sample mails (first 5): ${JSON.stringify(sampleMails)}`);
+
+    console.log(`[Futureshop] Filtering ${memberArray.length} members against "${searchEmail}"...`);
+    const m = memberArray.find((item: any) => {
+      const itemMail = String(item.mail || item.email || '').trim().toLowerCase();
+      return itemMail === searchEmail;
+    }) || null;
+    console.log(`[Futureshop] Filter result: ${m ? `matched memberId=${m.memberId || m.member_id}` : 'no match'}`);
+
     if (!m) return null;
     return {
       memberId: m.memberId || m.member_id,
@@ -100,6 +120,7 @@ export async function searchMemberByEmail(email: string): Promise<FutureshopMemb
 
   // 単一会員レスポンスの場合
   if (data.memberId || data.member_id) {
+    console.log('[Futureshop] Single-member response detected');
     return {
       memberId: data.memberId || data.member_id,
       lastName: data.lastName || data.last_name || '',
@@ -109,6 +130,7 @@ export async function searchMemberByEmail(email: string): Promise<FutureshopMemb
     };
   }
 
+  console.log('[Futureshop] No member data in response');
   return null;
 }
 

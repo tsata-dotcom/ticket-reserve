@@ -8,9 +8,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'emailが必要です' }, { status: 400 });
     }
 
-    console.log(`[member-check] Checking: ${email}`);
+    const normalizedEmail = email.trim().toLowerCase();
+    console.log(`[member-check] Input email: "${email}" (length=${email.length})`);
+    console.log(`[member-check] Normalized email: "${normalizedEmail}" (length=${normalizedEmail.length})`);
 
-    const member = await searchMemberByEmail(email);
+    const member = await searchMemberByEmail(normalizedEmail);
 
     if (member) {
       const memberName = `${member.lastName} ${member.firstName}`.trim();
