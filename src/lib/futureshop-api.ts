@@ -135,8 +135,26 @@ export async function searchMemberByEmail(email: string): Promise<FutureshopMemb
 }
 
 /**
+ * UTC日時を Futureshop API が要求する JST タイムゾーンなし形式
+ * (yyyy-mm-ddThh:mm:ss、ミリ秒なし) に変換する。
+ */
+export function formatJstForFutureshop(input: string | Date): string {
+  const date = input instanceof Date ? input : new Date(input);
+  // UTC基準で +9h して JST の時刻成分を取り出す（toISOString は常にUTCを返す）
+  const jst = new Date(date.getTime() + 9 * 60 * 60 * 1000);
+  const yyyy = jst.getUTCFullYear();
+  const mm = String(jst.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(jst.getUTCDate()).padStart(2, '0');
+  const hh = String(jst.getUTCHours()).padStart(2, '0');
+  const mi = String(jst.getUTCMinutes()).padStart(2, '0');
+  const ss = String(jst.getUTCSeconds()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}T${hh}:${mi}:${ss}`;
+}
+
+/**
  * ページネーション付きで会員一覧を取得し、メールでフィルタリング
  * - updateDateStart があれば差分取得（新規登録 + 更新）、なければ全件
+ * - ページネーションは Futureshop の nextUrl ベース（offset 非対応）
  * - maxPages または timeoutMs に達したら打ち切り
  */
 export async function fetchMembersWithFallback(params: {
@@ -160,7 +178,15 @@ export async function fetchMembersWithFallback(params: {
 
   const token = await getAccessToken();
 
-  let offset = 0;
+  // 1ページ目のURLを構築（nextUrl が来たら以降はそのURLをそのまま使う）
+  const apiDomain = getApiDomain();
+  const firstPageQuery = new URLSearchParams();
+  firstPageQuery.set('limit', String(pageSize));
+  if (params.updateDateStart) {
+    firstPageQuery.set('updateDateStart', formatJstForFutureshop(params.updateDateStart));
+  }
+  let nextUrl: string | null = `https://${apiDomain}/admin-api/v1/member?${firstPageQuery.toString()}`;
+
   let pagesFetched = 0;
   let totalScanned = 0;
   let timedOut = false;
@@ -174,14 +200,12 @@ export async function fetchMembersWithFallback(params: {
       break;
     }
 
-    const queryParams = new URLSearchParams();
-    queryParams.set('limit', String(pageSize));
-    queryParams.set('offset', String(offset));
-    if (params.updateDateStart) {
-      queryParams.set('updateDateStart', params.updateDateStart);
-    }
+    if (!nextUrl) break;
 
-    const requestUrl = `https://${getApiDomain()}/admin-api/v1/member?${queryParams.toString()}`;
+    // nextUrl が相対パスで返るケースに備えて絶対URL化
+    const requestUrl: string = nextUrl.startsWith('http')
+      ? nextUrl
+      : `https://${apiDomain}${nextUrl.startsWith('/') ? '' : '/'}${nextUrl}`;
     console.log(`[Futureshop] Fetch page ${page + 1}/${maxPages}: ${requestUrl}`);
 
     const rawData = await proxyRequest({
@@ -199,36 +223,31 @@ export async function fetchMembersWithFallback(params: {
     totalScanned += pageCount;
     pagesFetched++;
 
-    console.log(`[Futureshop] Page ${page + 1}: got ${pageCount} members (total scanned: ${totalScanned})`);
+    console.log(`[Futureshop] Page ${page + 1}: got ${pageCount} members (total scanned: ${totalScanned}), nextUrl=${data.nextUrl ?? 'none'}`);
 
-    if (pageCount === 0) {
-      break;
+    if (pageCount > 0) {
+      const m = memberArray.find((item: any) => {
+        const itemMail = String(item.mail || item.email || '').trim().toLowerCase();
+        return itemMail === searchEmail;
+      });
+
+      if (m) {
+        found = {
+          memberId: m.memberId || m.member_id,
+          lastName: m.lastName || m.last_name || '',
+          firstName: m.firstName || m.first_name || '',
+          mail: m.mail || m.email || '',
+          telNoMain: m.telNoMain || m.tel_no_main || '',
+        };
+        break;
+      }
     }
 
-    const m = memberArray.find((item: any) => {
-      const itemMail = String(item.mail || item.email || '').trim().toLowerCase();
-      return itemMail === searchEmail;
-    });
-
-    if (m) {
-      found = {
-        memberId: m.memberId || m.member_id,
-        lastName: m.lastName || m.last_name || '',
-        firstName: m.firstName || m.first_name || '',
-        mail: m.mail || m.email || '',
-        telNoMain: m.telNoMain || m.tel_no_main || '',
-      };
-      break;
-    }
-
-    if (pageCount < pageSize) {
-      break;
-    }
-
-    offset += pageSize;
+    nextUrl = typeof data.nextUrl === 'string' && data.nextUrl.length > 0 ? data.nextUrl : null;
+    if (!nextUrl) break;
   }
 
-  if (pagesFetched >= maxPages && !found) {
+  if (pagesFetched >= maxPages && !found && nextUrl) {
     pagesLimitReached = true;
   }
 
