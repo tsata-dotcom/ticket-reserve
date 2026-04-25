@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, ReactNode } from 'react';
 import { supabase } from './supabase';
 import { User } from '@supabase/supabase-js';
 import { CustomerProfile, FutureshopMemberInfo } from './types';
@@ -46,6 +46,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<CustomerProfile | null>(null);
   const [futureshopMember, setFutureshopMember] = useState<FutureshopMemberInfo | null>(null);
   const [loading, setLoading] = useState(true);
+  // verifyOtp 実行中は onAuthStateChange の処理をスキップして競合を避ける
+  const isVerifyingRef = useRef(false);
 
   const fetchProfile = async (userId: string): Promise<CustomerProfile | null> => {
     try {
@@ -175,6 +177,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     init();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      // verifyOtp 実行中はリスナーをスキップ（lock 競合の回避）
+      if (isVerifyingRef.current) {
+        return;
+      }
+
       const prevUser = user;
       setUser(session?.user ?? null);
 
@@ -252,6 +259,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const verifyOtp = async (email: string, token: string): Promise<VerifyResult> => {
+    isVerifyingRef.current = true;
     try {
       const { data, error } = await supabase.auth.verifyOtp({
         email,
@@ -280,6 +288,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (e) {
       console.error('verifyOtp error:', e);
       return { success: false, error: e instanceof Error ? e.message : '認証に失敗しました' };
+    } finally {
+      isVerifyingRef.current = false;
     }
   };
 
