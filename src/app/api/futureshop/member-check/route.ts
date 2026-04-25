@@ -82,11 +82,16 @@ export async function POST(req: NextRequest) {
     }
 
     const lastSyncedAt = syncStatus?.last_synced_at ?? null;
-    console.log(`[member-check] Cache miss, falling back to API (since: ${lastSyncedAt ?? 'none'})`);
+    // 取りこぼし防止のため updateDateStart に12時間のバッファを設ける
+    // (UPSERT/重複許容前提のため、多めに取得しても問題ない)
+    const updateDateStart = lastSyncedAt
+      ? new Date(new Date(lastSyncedAt).getTime() - 12 * 60 * 60 * 1000).toISOString()
+      : undefined;
+    console.log(`[member-check] Cache miss, falling back to API (last_synced_at: ${lastSyncedAt ?? 'none'}, updateDateStart: ${updateDateStart ?? 'none'})`);
 
     const result = await fetchMembersWithFallback({
       email: normalizedEmail,
-      updateDateStart: lastSyncedAt ?? undefined,
+      updateDateStart,
       maxPages: 20,
       pageSize: 100,
       timeoutMs: 25000,
