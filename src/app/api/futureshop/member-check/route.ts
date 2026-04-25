@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
 
     const result = await fetchMembersWithFallback({
       email: normalizedEmail,
-      createDateStart: lastSyncedAt ?? undefined,
+      updateDateStart: lastSyncedAt ?? undefined,
       maxPages: 20,
       pageSize: 100,
       timeoutMs: 25000,

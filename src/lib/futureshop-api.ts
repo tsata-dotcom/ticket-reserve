@@ -136,12 +136,12 @@ export async function searchMemberByEmail(email: string): Promise<FutureshopMemb
 
 /**
  * ページネーション付きで会員一覧を取得し、メールでフィルタリング
- * - createDateStart があれば差分取得、なければ全件
+ * - updateDateStart があれば差分取得（新規登録 + 更新）、なければ全件
  * - maxPages または timeoutMs に達したら打ち切り
  */
 export async function fetchMembersWithFallback(params: {
   email: string;
-  createDateStart?: string;
+  updateDateStart?: string;
   maxPages?: number;
   pageSize?: number;
   timeoutMs?: number;
@@ -177,8 +177,8 @@ export async function fetchMembersWithFallback(params: {
     const queryParams = new URLSearchParams();
     queryParams.set('limit', String(pageSize));
     queryParams.set('offset', String(offset));
-    if (params.createDateStart) {
-      queryParams.set('createDateStart', params.createDateStart);
+    if (params.updateDateStart) {
+      queryParams.set('updateDateStart', params.updateDateStart);
     }
 
     const requestUrl = `https://${getApiDomain()}/admin-api/v1/member?${queryParams.toString()}`;
