@@ -126,7 +126,7 @@ export default function LoginForm({ onSuccess, onSwitchToRegister }: LoginFormPr
               ご予約にはかにファクトリーオンラインショップの会員登録が必要です。
             </p>
             <a
-              href="https://cctest26120203.trial.future-shop.net/p/register"
+              href="https://kouragumi.com/p/register"
               target="_blank"
               rel="noopener noreferrer"
               className="inline-block w-full py-3 bg-orange-500 text-white rounded-xl font-bold text-lg hover:bg-orange-600 transition-colors min-h-[48px]"
