@@ -236,6 +236,34 @@ export async function fetchMembersWithFallback(params: {
 }
 
 /**
+ * memberId で会員が Futureshop 上に存在するか確認
+ * - 存在: true / 削除済み or 見つからない: false
+ */
+export async function verifyMemberExistsById(memberId: string): Promise<boolean> {
+  const token = await getAccessToken();
+
+  const requestUrl = `https://${getApiDomain()}/admin-api/v1/member?memberId=${encodeURIComponent(memberId)}`;
+  console.log(`[Futureshop] Verify memberId: ${requestUrl}`);
+
+  const rawData = await proxyRequest({
+    method: 'GET',
+    url: requestUrl,
+    headers: {
+      'X-SHOP-KEY': getShopKey(),
+      'Authorization': `Bearer ${token}`,
+    },
+  });
+  const data = unwrapProxyResponse(rawData);
+
+  const memberArray = data.memberList || data.members;
+  if (Array.isArray(memberArray)) {
+    return memberArray.length > 0;
+  }
+  // 単一会員レスポンス形式のフォールバック
+  return Boolean(data.memberId || data.member_id);
+}
+
+/**
  * 受注検索API（将来用）
  */
 export async function searchOrders(params: { memberId?: string; orderDateFrom?: string; orderDateTo?: string }) {

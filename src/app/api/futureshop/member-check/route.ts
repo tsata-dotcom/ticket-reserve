@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { fetchMembersWithFallback } from '@/lib/futureshop-api';
+import { fetchMembersWithFallback, verifyMemberExistsById } from '@/lib/futureshop-api';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -29,14 +29,45 @@ export async function POST(req: NextRequest) {
     }
 
     if (cached) {
-      console.log(`[member-check] Cache hit for ${normalizedEmail}`);
-      const memberName = `${cached.last_name ?? ''} ${cached.first_name ?? ''}`.trim();
-      return NextResponse.json({
-        exists: true,
-        memberId: cached.member_id,
-        memberName,
-        source: 'cache',
-      });
+      console.log(`[member-check] Cache hit, verifying with API: member_id=${cached.member_id}, email=${normalizedEmail}`);
+
+      let stillExists = true;
+      try {
+        stillExists = await verifyMemberExistsById(cached.member_id);
+      } catch (e) {
+        // API障害時はキャッシュを信頼してログイン不能を防ぐ
+        console.error(
+          `[member-check] API verification failed, trusting cache: ${e instanceof Error ? e.message : String(e)}`
+        );
+        const memberName = `${cached.last_name ?? ''} ${cached.first_name ?? ''}`.trim();
+        return NextResponse.json({
+          exists: true,
+          memberId: cached.member_id,
+          memberName,
+          source: 'cache',
+        });
+      }
+
+      if (stillExists) {
+        console.log('[member-check] API verification: member exists');
+        const memberName = `${cached.last_name ?? ''} ${cached.first_name ?? ''}`.trim();
+        return NextResponse.json({
+          exists: true,
+          memberId: cached.member_id,
+          memberName,
+          source: 'cache',
+        });
+      }
+
+      console.log('[member-check] API verification: member deleted, removing from cache');
+      const { error: deleteErr } = await supabase
+        .from('futureshop_members')
+        .delete()
+        .eq('member_id', cached.member_id);
+      if (deleteErr) {
+        console.error('[member-check] Cache delete error:', deleteErr);
+      }
+      return NextResponse.json({ exists: false });
     }
 
     // Step 2: APIフォールバック
