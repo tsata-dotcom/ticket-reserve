@@ -135,6 +135,21 @@ export async function searchMemberByEmail(email: string): Promise<FutureshopMemb
 }
 
 /**
+ * Futureshop API が返す日時 (例 "2026-04-25T14:56:49") は JST だがタイムゾーン情報を持たない。
+ * Supabase の TIMESTAMPTZ にそのまま入れると UTC 解釈され +9h ずれるため、"+09:00" を付与する。
+ * 既にタイムゾーン情報を含む場合はそのまま返す（冪等）。
+ *
+ * 注意: ticket-system 側の /api/sync/futureshop でも同じ問題が起きるため、
+ *       同等の処理（保存時に "+09:00" を付与）が必要。
+ */
+export function appendJstTimezone(value: string | null | undefined): string | null {
+  if (!value) return null;
+  // 末尾が Z / +HH:MM / -HH:MM ならタイムゾーン付きとみなしてそのまま返す
+  if (/(?:Z|[+-]\d{2}:?\d{2})$/.test(value)) return value;
+  return `${value}+09:00`;
+}
+
+/**
  * UTC日時を Futureshop API が要求する JST タイムゾーンなし形式
  * (yyyy-mm-ddThh:mm:ss、ミリ秒なし) に変換する。
  */
@@ -232,13 +247,16 @@ export async function fetchMembersWithFallback(params: {
       });
 
       if (m) {
+        // Futureshop の dateRegistered は JST だがタイムゾーン情報なしで返るため、
+        // TIMESTAMPTZ 解釈ズレを防ぐべく "+09:00" を付与しておく
+        const rawRegistered = m.dateRegistered || m.date_registered || null;
         found = {
           memberId: m.memberId || m.member_id,
           lastName: m.lastName || m.last_name || '',
           firstName: m.firstName || m.first_name || '',
           mail: m.mail || m.email || '',
           telNoMain: m.telNoMain || m.tel_no_main || '',
-          dateRegistered: m.dateRegistered || m.date_registered || undefined,
+          dateRegistered: appendJstTimezone(rawRegistered) ?? undefined,
         };
         break;
       }

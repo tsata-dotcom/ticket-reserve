@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { fetchMembersWithFallback, verifyMemberExistsById } from '@/lib/futureshop-api';
+import { fetchMembersWithFallback, verifyMemberExistsById, appendJstTimezone } from '@/lib/futureshop-api';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -102,12 +102,15 @@ export async function POST(req: NextRequest) {
       console.log(`[member-check] Found via API: ${memberName} (${m.memberId})`);
 
       // 発見した会員をキャッシュに追加
+      // dateRegistered は JST 文字列だがタイムゾーン情報なしのため、TIMESTAMPTZ への
+      // 保存時に UTC 解釈で +9h ずれる。"+09:00" を付与して JST として記録する。
+      // 注意: ticket-system 側の /api/sync/futureshop でも同じ対応が必要。
       const { error: insertErr } = await supabase.from('futureshop_members').insert({
         member_id: m.memberId,
         email: normalizedEmail,
         last_name: m.lastName,
         first_name: m.firstName,
-        date_registered: m.dateRegistered ?? null,
+        date_registered: appendJstTimezone(m.dateRegistered),
         cached_at: new Date().toISOString(),
       });
       if (insertErr) {
