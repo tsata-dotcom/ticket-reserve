@@ -2,14 +2,27 @@
 
 import { useAuth } from '@/lib/auth-context';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 
 export default function Header() {
   const { user, signOut } = useAuth();
+  const pathname = usePathname();
+
+  // 同一URLへの Link クリックは Next.js が no-op として扱うため、
+  // / 上で予約フローの中途状態（step>0 や Completion 画面）にいるとロゴを
+  // 押しても見た目が変わらず「トップに戻れない」現象になる。
+  // 既に / にいるときは明示的にリロードして初期状態に戻す。
+  const handleLogoClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    if (pathname === '/') {
+      e.preventDefault();
+      window.location.assign('/');
+    }
+  };
 
   return (
     <header className="sticky top-0 z-50 bg-white border-b border-gray-200 shadow-sm">
       <div className="max-w-[800px] mx-auto px-4 h-14 flex items-center justify-between">
-        <Link href="/" className="flex items-center gap-2">
+        <Link href="/" onClick={handleLogoClick} className="flex items-center gap-2">
           <span className="text-2xl">🦀</span>
           <div>
             <span className="font-bold text-primary text-lg leading-tight block">かにファクトリー</span>
