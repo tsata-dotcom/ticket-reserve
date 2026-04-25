@@ -268,16 +268,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signOut = async () => {
-    // 即座にUIをリセット
+    // stateを即座にクリア → ユーザーは即座にログアウト状態になる
     setUser(null);
     setProfile(null);
     setFutureshopMember(null);
 
-    // バックグラウンドでSupabaseセッション削除
+    // signOutはバックグラウンドで非同期完了（awaitしない）
     supabase.auth.signOut().catch(console.error);
-
-    // トップページに遷移（リロードではなくナビゲーションで高速化）
-    window.location.href = '/';
   };
 
   return (

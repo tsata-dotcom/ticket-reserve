@@ -222,7 +222,7 @@ export default function LoginForm({ onSuccess, onSwitchToRegister }: LoginFormPr
               onClick={() => { setFormState('email'); setOtpCode(''); setError(''); }}
               className="text-gray-500 hover:underline text-sm"
             >
-              メールアドレスを変更する
+              戻る
             </button>
           </div>
 
