@@ -97,6 +97,49 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return;
 
+      const normalizedEmail = email.trim().toLowerCase();
+
+      // Step 1: ローカルキャッシュ (futureshop_members) を優先参照する。
+      // sendOtp → member-check の段階で paginated fetch 経由で確実にキャッシュされており、
+      // /api/futureshop/member-search が使う single-page API より取りこぼしがない。
+      const { data: cached, error: cacheErr } = await supabase
+        .from('futureshop_members')
+        .select('member_id, last_name, first_name, email')
+        .eq('email', normalizedEmail)
+        .maybeSingle();
+
+      if (cacheErr) {
+        console.error('[Futureshop] キャッシュ参照エラー:', cacheErr);
+      }
+
+      if (cached) {
+        const member: FutureshopMemberInfo = {
+          memberId: cached.member_id,
+          lastName: cached.last_name ?? '',
+          firstName: cached.first_name ?? '',
+          mail: cached.email ?? normalizedEmail,
+          telNoMain: '',
+        };
+        setFutureshopMember(member);
+        console.log('[Futureshop] 会員連携成功（キャッシュ）:', member.memberId);
+
+        const { data: { user: currentUser } } = await supabase.auth.getUser(session.access_token);
+        if (currentUser) {
+          const fullName = `${member.lastName} ${member.firstName}`.trim();
+          await supabase
+            .from('customer_profiles')
+            .update({
+              futureshop_member_id: member.memberId,
+              ...(fullName ? { display_name: fullName } : {}),
+            })
+            .eq('id', currentUser.id);
+
+          await fetchProfile(currentUser.id);
+        }
+        return;
+      }
+
+      // Step 2: キャッシュ未ヒット時のみ API フォールバック
       const res = await fetch(`/api/futureshop/member-search?email=${encodeURIComponent(email)}`, {
         headers: { 'Authorization': `Bearer ${session.access_token}` },
       });
@@ -104,9 +147,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (res.ok) {
         const { member } = await res.json();
         setFutureshopMember(member);
-        console.log('[Futureshop] 会員連携成功:', member.memberId);
+        console.log('[Futureshop] 会員連携成功（API）:', member.memberId);
 
-        // customer_profilesにfutureshop_member_idを保存
         const { data: { user: currentUser } } = await supabase.auth.getUser(session.access_token);
         if (currentUser) {
           const fullName = `${member.lastName} ${member.firstName}`.trim();
@@ -119,7 +161,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             })
             .eq('id', currentUser.id);
 
-          // プロフィールを再取得して最新状態を反映
           await fetchProfile(currentUser.id);
         }
       } else {

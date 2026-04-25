@@ -152,11 +152,31 @@ export async function POST(request: NextRequest) {
 
     const orderNo = await generateOrderNo(visit_date);
 
+    // 表示名は futureshop_members の last_name/first_name を優先する。
+    // profile.display_name はサインアップ時にメールアドレスで初期化されるため、
+    // FS連携が間に合わないとメールアドレスのまま予約・QRメールに載ってしまう。
+    let displayName = profile.display_name;
+    const lookupEmail = (profile.email || user.email || '').trim().toLowerCase();
+    if (lookupEmail) {
+      const { data: fsMember, error: fsErr } = await supabase
+        .from('futureshop_members')
+        .select('last_name, first_name')
+        .eq('email', lookupEmail)
+        .maybeSingle();
+      if (fsErr) {
+        console.error('futureshop_members lookup error:', fsErr);
+      }
+      if (fsMember) {
+        const fullName = `${fsMember.last_name ?? ''} ${fsMember.first_name ?? ''}`.trim();
+        if (fullName) displayName = fullName;
+      }
+    }
+
     const { data: reservation, error: insertError } = await supabase
       .from('reservations')
       .insert({
         order_no: orderNo,
-        buyer_name: profile.display_name,
+        buyer_name: displayName,
         buyer_email: profile.email,
         buyer_phone: profile.phone,
         visit_date,
@@ -182,7 +202,7 @@ export async function POST(request: NextRequest) {
     try {
       const emailResult = await sendQrEmail({
         to: profile.email,
-        displayName: profile.display_name,
+        displayName,
         orderNo,
         tourType: tourRecord.name,
         visitDate: visit_date,
