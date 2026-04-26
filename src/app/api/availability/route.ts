@@ -22,7 +22,6 @@ export async function GET(request: NextRequest) {
   const year = parseInt(searchParams.get('year') || '');
   const month = parseInt(searchParams.get('month') || '');
   const tourSlug = searchParams.get('tour_type') || '';
-  const debugMode = searchParams.get('debug') === '1';
 
   if (!year || !month || !tourSlug) {
     return NextResponse.json({ error: 'year, month, tour_type are required' }, { status: 400 });
@@ -46,13 +45,15 @@ export async function GET(request: NextRequest) {
   const tourName: string | null =
     (tourRecord as { name?: string | null } | null)?.name ?? null;
 
+  // default_capacity 列が tour_types に追加された場合だけ拾う（現状は undefined）
   const tourDefault = (tourRecord as { default_capacity?: number | null } | null)?.default_capacity;
   const tourDefaultCapacity: number =
     typeof tourDefault === 'number' && Number.isFinite(tourDefault)
       ? tourDefault
       : FALLBACK_CAPACITY;
 
-  // reservations.tour_type は slug / name 混在
+  // reservations.tour_type は履歴上 slug (ticket-reserve 経由) と name (ticket-system 経由)
+  // が混在しているため、両方を IN で拾う。
   const tourTypeValues = tourName
     ? Array.from(new Set([tourSlug, tourName]))
     : [tourSlug];
@@ -69,58 +70,23 @@ export async function GET(request: NextRequest) {
     console.error('[availability] reservations fetch error:', resErr);
   }
 
-  // time_slot_settings の tour_type 列は slug と日本語名のどちらが入っているか
-  // 環境によってブレる (ticket-system は name を書く設計だが、過去の挙動で slug が
-  // 残っているケースもある)。両方を IN フィルタで拾えば取りこぼさない。
-  // また tour_types に該当 slug が無く tourName が解決できなかった場合でも、
-  // 少なくとも slug でヒットさせるチャンスを残す。
+  // time_slot_settings の tour_type 列も slug / name の両方で拾う。
+  // ticket-system は name で書き込むが、過去データや別経路で slug が入っている
+  // ケースもあるため。tourName が解決できなくても slug でヒットするチャンスを残す。
   const settingsTourTypeKeys = Array.from(
     new Set([tourSlug, ...(tourName ? [tourName] : [])])
   );
 
-  let settings: Array<{
-    date: string;
-    slot: 'AM' | 'PM';
-    capacity: number;
-    is_active: boolean;
-    tour_type: string;
-  }> | null = null;
+  const { data: settings, error: settingsErr } = await supabase
+    .from('time_slot_settings')
+    .select('date, slot, capacity, is_active, tour_type')
+    .in('tour_type', settingsTourTypeKeys)
+    .gte('date', startDate)
+    .lte('date', endDate);
 
-  let settingsFetchError: { message: string } | null = null;
-
-  {
-    const { data, error: settingsErr } = await supabase
-      .from('time_slot_settings')
-      .select('date, slot, capacity, is_active, tour_type')
-      .in('tour_type', settingsTourTypeKeys)
-      .gte('date', startDate)
-      .lte('date', endDate);
-
-    if (settingsErr) {
-      console.error('[availability] time_slot_settings fetch error:', settingsErr);
-      settingsFetchError = { message: settingsErr.message };
-    }
-    settings = data;
+  if (settingsErr) {
+    console.error('[availability] time_slot_settings fetch error:', settingsErr);
   }
-
-  // debug モード時のみ、tour_type フィルタ無しで同期間の time_slot_settings を取得し、
-  // 実際にどんな tour_type 値で行が入っているかを返す（slug↔name の表記ゆれ確認用）。
-  let settingsUnfiltered: Array<Record<string, unknown>> | null = null;
-  if (debugMode) {
-    const { data: dataAll, error: errAll } = await supabase
-      .from('time_slot_settings')
-      .select('*')
-      .gte('date', startDate)
-      .lte('date', endDate);
-    if (errAll) {
-      console.error('[availability] unfiltered time_slot_settings fetch error:', errAll);
-    }
-    settingsUnfiltered = dataAll;
-  }
-
-  console.log(
-    `[availability] slug=${tourSlug} -> name=${JSON.stringify(tourName)} | settings.length=${settings?.length ?? 0} | reservations.length=${reservations?.length ?? 0}`
-  );
 
   // Build availability map
   const availability: Record<
@@ -138,6 +104,7 @@ export async function GET(request: NextRequest) {
       s => normalizeDateString(s.date) === dateStr && s.slot === 'PM'
     );
 
+    // is_active=false の行が「休止」を意味する。設定行が無い場合は営業扱い。
     const amClosed = amSetting ? amSetting.is_active === false : false;
     const pmClosed = pmSetting ? pmSetting.is_active === false : false;
 
@@ -166,29 +133,6 @@ export async function GET(request: NextRequest) {
       AM: { remaining: Math.max(0, amRemaining), status: getStatus(amRemaining, amClosed) },
       PM: { remaining: Math.max(0, pmRemaining), status: getStatus(pmRemaining, pmClosed) },
     };
-  }
-
-  if (debugMode) {
-    return NextResponse.json({
-      availability,
-      debug: {
-        request: { year, month, tourSlug, startDate, endDate },
-        tourRecord, // null の場合は tour_types に該当 slug 無し
-        tourName,
-        tourDefaultCapacity,
-        tourTypeValuesUsedForReservations: tourTypeValues,
-        settingsTourTypeKeys, // time_slot_settings IN フィルタに使った値
-        settingsFiltered: settings, // 上記キーでフィルタ済
-        settingsFilteredCount: settings?.length ?? 0,
-        settingsFetchError,
-        settingsUnfiltered, // 期間内 全 tour_type の生データ
-        settingsUnfilteredCount: settingsUnfiltered?.length ?? 0,
-        settingsUnfilteredTourTypes: Array.from(
-          new Set((settingsUnfiltered ?? []).map(s => String(s.tour_type)))
-        ),
-        reservationsCount: reservations?.length ?? 0,
-      },
-    });
   }
 
   return NextResponse.json({ availability });
