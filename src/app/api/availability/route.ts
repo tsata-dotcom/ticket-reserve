@@ -69,7 +69,15 @@ export async function GET(request: NextRequest) {
     console.error('[availability] reservations fetch error:', resErr);
   }
 
-  // tour_type フィルタ付きの time_slot_settings 取得（本番経路）
+  // time_slot_settings の tour_type 列は slug と日本語名のどちらが入っているか
+  // 環境によってブレる (ticket-system は name を書く設計だが、過去の挙動で slug が
+  // 残っているケースもある)。両方を IN フィルタで拾えば取りこぼさない。
+  // また tour_types に該当 slug が無く tourName が解決できなかった場合でも、
+  // 少なくとも slug でヒットさせるチャンスを残す。
+  const settingsTourTypeKeys = Array.from(
+    new Set([tourSlug, ...(tourName ? [tourName] : [])])
+  );
+
   let settings: Array<{
     date: string;
     slot: 'AM' | 'PM';
@@ -80,11 +88,11 @@ export async function GET(request: NextRequest) {
 
   let settingsFetchError: { message: string } | null = null;
 
-  if (tourName) {
+  {
     const { data, error: settingsErr } = await supabase
       .from('time_slot_settings')
       .select('date, slot, capacity, is_active, tour_type')
-      .eq('tour_type', tourName)
+      .in('tour_type', settingsTourTypeKeys)
       .gte('date', startDate)
       .lte('date', endDate);
 
@@ -169,7 +177,8 @@ export async function GET(request: NextRequest) {
         tourName,
         tourDefaultCapacity,
         tourTypeValuesUsedForReservations: tourTypeValues,
-        settingsFiltered: settings, // tour_type=tourName でフィルタ済
+        settingsTourTypeKeys, // time_slot_settings IN フィルタに使った値
+        settingsFiltered: settings, // 上記キーでフィルタ済
         settingsFilteredCount: settings?.length ?? 0,
         settingsFetchError,
         settingsUnfiltered, // 期間内 全 tour_type の生データ
