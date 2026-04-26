@@ -88,6 +88,25 @@ export async function GET(request: NextRequest) {
     console.error('[availability] time_slot_settings fetch error:', settingsErr);
   }
 
+  // 休業日: ticket-system 側で /slot-management の「休業日管理」から登録される。
+  // 該当日は AM/PM とも remaining=0 / status='closed' で返す（time_slot_settings に
+  // 行が無くても holidays に入っていれば閉鎖扱い）。
+  const { data: holidayRows, error: holidaysErr } = await supabase
+    .from('holidays')
+    .select('date')
+    .gte('date', startDate)
+    .lte('date', endDate);
+
+  if (holidaysErr) {
+    console.error('[availability] holidays fetch error:', holidaysErr);
+  }
+
+  const holidaySet = new Set(
+    (holidayRows ?? [])
+      .map(h => normalizeDateString(h.date))
+      .filter(d => d.length === 10)
+  );
+
   // Build availability map
   const availability: Record<
     string,
@@ -104,9 +123,11 @@ export async function GET(request: NextRequest) {
       s => normalizeDateString(s.date) === dateStr && s.slot === 'PM'
     );
 
-    // is_active=false の行が「休止」を意味する。設定行が無い場合は営業扱い。
-    const amClosed = amSetting ? amSetting.is_active === false : false;
-    const pmClosed = pmSetting ? pmSetting.is_active === false : false;
+    const isHoliday = holidaySet.has(dateStr);
+
+    // 休業日 or is_active=false の行は閉鎖扱い。設定行が無く休業日でもなければ営業扱い。
+    const amClosed = isHoliday || (amSetting ? amSetting.is_active === false : false);
+    const pmClosed = isHoliday || (pmSetting ? pmSetting.is_active === false : false);
 
     const amCapacity = amSetting?.capacity ?? tourDefaultCapacity;
     const pmCapacity = pmSetting?.capacity ?? tourDefaultCapacity;
@@ -119,8 +140,9 @@ export async function GET(request: NextRequest) {
       .filter(r => r.visit_date === dateStr && r.time_slot === 'PM')
       .reduce((sum, r) => sum + (r.ticket_count || 0), 0);
 
-    const amRemaining = amCapacity - amReserved;
-    const pmRemaining = pmCapacity - pmReserved;
+    // 休業日は確実に「枠 0 / closed」を返す。capacity 計算より優先。
+    const amRemaining = amClosed ? 0 : amCapacity - amReserved;
+    const pmRemaining = pmClosed ? 0 : pmCapacity - pmReserved;
 
     const getStatus = (remaining: number, closed: boolean) => {
       if (closed) return 'closed';
