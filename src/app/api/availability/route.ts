@@ -58,11 +58,15 @@ export async function GET(request: NextRequest) {
     ? Array.from(new Set([tourSlug, tourName]))
     : [tourSlug];
 
+  // status はキャンセル以外を対象。'reserved' / 'confirmed' / その他いずれの enum
+  // 値でも、キャンセル以外なら残数集計に含める (.eq('status', 'reserved') だと
+  // 'confirmed' などが取りこぼされて 5/6 AM の test 予約が remaining から
+  // 差し引かれない不具合になっていた)。
   const { data: reservations, error: resErr } = await supabase
     .from('reservations')
     .select('visit_date, time_slot, ticket_count')
     .in('tour_type', tourTypeValues)
-    .eq('status', 'reserved')
+    .neq('status', 'cancelled')
     .gte('visit_date', startDate)
     .lte('visit_date', endDate);
 
