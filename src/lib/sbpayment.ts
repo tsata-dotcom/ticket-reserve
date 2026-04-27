@@ -96,10 +96,47 @@ export type LinkFormParams = {
   free1: string;
   free2: string;
   free3: string;
+  free_csv: string;
   request_date: string;
   limit_second: string;
   sps_hashcode: string;
 };
+
+// ハッシュ計算に使うフィールド順序（都度課金 A01-1 要求項目定義順）。
+// この順で連結したうえで末尾にハッシュキーをつけてSHA1を取る。
+// 連結順序を一箇所で定義することで、ハッシュ値とデバッグログの不一致を防ぐ。
+export const LINK_HASH_FIELD_ORDER: ReadonlyArray<keyof Omit<LinkFormParams, "sps_hashcode">> = [
+  "pay_method",
+  "merchant_id",
+  "service_id",
+  "cust_code",
+  "sps_cust_no",
+  "sps_payment_no",
+  "order_id",
+  "item_id",
+  "item_name",
+  "tax",
+  "amount",
+  "pay_type",
+  "service_type",
+  "terminal_type",
+  "success_url",
+  "cancel_url",
+  "error_url",
+  "pagecon_url",
+  "free1",
+  "free2",
+  "free3",
+  "free_csv",
+  "request_date",
+  "limit_second",
+];
+
+export function getLinkHashValues(
+  params: Omit<LinkFormParams, "sps_hashcode">
+): string[] {
+  return LINK_HASH_FIELD_ORDER.map((k) => params[k] ?? "");
+}
 
 // SBペイメントの cust_code は 64 文字制限。'kanifactory_' プレフィクス + emailのSHA256先頭20文字で
 // 32文字に収まる。同一顧客でも email さえ同じなら同じ cust_code になる。
@@ -154,44 +191,13 @@ export function buildLinkFormParams(
     free1: "",
     free2: "",
     free3: "",
+    free_csv: "", // 未使用だがハッシュ計算と form 送信の両方に空文字で含める必要あり
     request_date: formatRequestDate(now),
     limit_second: "600",
   };
 
-  // SBペイメント仕様書「都度課金」要求項目順:
-  // pay_method, merchant_id, service_id, cust_code, sps_cust_no, sps_payment_no,
-  // order_id, item_id, item_name, tax, amount, pay_type, service_type, terminal_type,
-  // success_url, cancel_url, error_url, pagecon_url, free1, free2, free3, free_csv,
-  // request_date, limit_second
-  // ※free_csv は今回未使用なので空文字として連結に含める。
   // ※リンク型のため item_name は Base64 化せず生文字列のまま連結する。
-  const hashValues: string[] = [
-    params.pay_method,
-    params.merchant_id,
-    params.service_id,
-    params.cust_code,
-    params.sps_cust_no,
-    params.sps_payment_no,
-    params.order_id,
-    params.item_id,
-    params.item_name,
-    params.tax,
-    params.amount,
-    params.pay_type,
-    params.service_type,
-    params.terminal_type,
-    params.success_url,
-    params.cancel_url,
-    params.error_url,
-    params.pagecon_url,
-    params.free1,
-    params.free2,
-    params.free3,
-    "", // free_csv（未使用）
-    params.request_date,
-    params.limit_second,
-  ];
-
+  const hashValues = getLinkHashValues(params);
   const sps_hashcode = generateHashcode(hashValues, config.hashKey);
 
   return { ...params, sps_hashcode };

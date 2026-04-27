@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import iconv from "iconv-lite";
-import { buildLinkFormParams, getConfig } from "@/lib/sbpayment";
+import {
+  buildLinkFormParams,
+  getConfig,
+  getLinkHashValues,
+} from "@/lib/sbpayment";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -67,6 +71,20 @@ export async function POST(request: NextRequest) {
       amount: numericAmount,
       ticketCount: Number(ticketCount) || 1,
     });
+
+    // ----- デバッグ出力（SBペイメント連携トラブル時の解析用） -----
+    // ハッシュ計算と同じ順序・同じ値で連結文字列を再構築してログ出力する。
+    // sps_hashcode 自体はハッシュ入力には含まれないので除外。
+    const { sps_hashcode: _hashOmit, ...hashableParams } = formParams;
+    void _hashOmit;
+    const hashValues = getLinkHashValues(hashableParams);
+    const hashInputString = hashValues.join("");
+    console.log("=== SBPayment Debug ===");
+    console.log("Hash input (before key):", hashInputString);
+    console.log("Generated hashcode:", formParams.sps_hashcode);
+    console.log("item_name (UTF-8):", formParams.item_name);
+    console.log("All params:", JSON.stringify(formParams, null, 2));
+    console.log("=== /SBPayment Debug ===");
 
     const { error: updateError } = await supabase
       .from("reservations")
