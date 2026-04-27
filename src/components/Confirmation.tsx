@@ -73,9 +73,12 @@ export default function Confirmation({ tour, selectedDate, timeSlot, ticketCount
       try {
         // has_first_visit_free 適用判定:
         //   同一email × 同一tour_type で payment_status が
-        //   authorized / captured / cancel_charged のいずれかの予約があれば2回目以降。
-        //   authorized を含めないと、未チェックインのオーソリ済み予約が複数あった場合に
-        //   全て初回扱いになり、無料体験が複数回適用されてしまう不具合が起きる。
+        //   authorized / captured / cancel_charged / auth_cancelled のいずれかの
+        //   予約があれば2回目以降。
+        //   - authorized: 未チェックインだがオーソリ済み（多重初回適用を防ぐ）
+        //   - captured: チェックイン済みで売上確定
+        //   - cancel_charged: キャンセル料請求済み
+        //   - auth_cancelled: 初回無料でチェックイン済み = 無料特典を使い切った
         const email = (profile?.email || user.email || '').trim().toLowerCase();
         if (!email) {
           setIsFirstTime(true);
@@ -86,7 +89,7 @@ export default function Confirmation({ tour, selectedDate, timeSlot, ticketCount
           .select('id')
           .eq('buyer_email', email)
           .eq('tour_type', tour.slug)
-          .in('payment_status', ['authorized', 'captured', 'cancel_charged'])
+          .in('payment_status', ['authorized', 'captured', 'cancel_charged', 'auth_cancelled'])
           .limit(1);
 
         if (fetchError) {
