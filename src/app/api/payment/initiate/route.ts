@@ -122,13 +122,22 @@ export async function POST(request: NextRequest) {
 </body>
 </html>`;
 
-    // SBペイメント仕様: リンク型はShift-JISで受信。HTML本文もShift-JISでエンコードして返す。
+    // SBペイメント仕様: リンク型はShift-JISで受信する必要があるため、HTML本文を
+    // Shift-JISのバイナリとして返す。ブラウザは Content-Type の charset と meta charset を
+    // Shift_JIS と解釈し、accept-charset="Shift_JIS" の form 送信時もShift-JISで POST する。
+    // Buffer をそのまま Response に渡すと一部ランタイムで再エンコードされる懸念があるため、
+    // 明示的に ArrayBuffer (= 純粋なバイト列) に切り出して渡す。
     const sjisBuffer = iconv.encode(html, "Shift_JIS");
+    const sjisBytes = sjisBuffer.buffer.slice(
+      sjisBuffer.byteOffset,
+      sjisBuffer.byteOffset + sjisBuffer.byteLength
+    ) as ArrayBuffer;
 
-    return new Response(new Uint8Array(sjisBuffer), {
+    return new Response(sjisBytes, {
       status: 200,
       headers: {
         "Content-Type": "text/html; charset=Shift_JIS",
+        "Content-Length": String(sjisBuffer.byteLength),
         "Cache-Control": "no-store",
       },
     });
