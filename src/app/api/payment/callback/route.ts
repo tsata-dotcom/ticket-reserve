@@ -96,7 +96,11 @@ export async function POST(request: NextRequest) {
   }
 
   if (resResult === "OK") {
-    // 同一email × 同一tour_type で payment_status が captured/cancel_charged の予約を検索 → 初回判定。
+    // 同一email × 同一tour_type で payment_status が
+    //   authorized / captured / cancel_charged
+    // のいずれかの自分以外の予約があれば「2回目以降」と判定。
+    // authorized を含めないと、未チェックインの予約が複数あった場合に全て初回扱いに
+    // なってしまい、無料体験が複数回適用されてしまう不具合が起きる。
     let isFirstVisit = true;
     if (reservation.buyer_email && reservation.tour_type) {
       const { data: prior, error: priorErr } = await supabase
@@ -104,7 +108,7 @@ export async function POST(request: NextRequest) {
         .select("id")
         .eq("buyer_email", reservation.buyer_email)
         .eq("tour_type", reservation.tour_type)
-        .in("payment_status", ["captured", "cancel_charged"])
+        .in("payment_status", ["authorized", "captured", "cancel_charged"])
         .neq("id", reservationId)
         .limit(1);
       if (priorErr) {

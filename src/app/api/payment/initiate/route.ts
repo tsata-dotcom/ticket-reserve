@@ -73,6 +73,8 @@ export async function POST(request: NextRequest) {
     });
 
     // ----- デバッグ出力（SBペイメント連携トラブル時の解析用） -----
+    // TODO: 本番前にデバッグログを削除（hashInputString や全paramsJSONには
+    //   email ハッシュ・order_id・金額が含まれるため、本番ログには残さないこと）。
     // ハッシュ計算と同じ順序・同じ値で連結文字列を再構築してログ出力する。
     // sps_hashcode 自体はハッシュ入力には含まれないので除外。
     const { sps_hashcode: _hashOmit, ...hashableParams } = formParams;

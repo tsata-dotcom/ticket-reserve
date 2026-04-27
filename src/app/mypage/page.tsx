@@ -7,10 +7,12 @@ import { supabase } from '@/lib/supabase';
 import { Reservation } from '@/lib/types';
 import Header from '@/components/Header';
 
+// payment_messages テーブルの実カラムは message_key / message_text / description。
+// title / body は誤りで、SELECT すると 400 になる。
 type PaymentMessage = {
   message_key: string;
-  title: string | null;
-  body: string | null;
+  message_text: string | null;
+  description: string | null;
 };
 
 type CancelPreview = {
@@ -44,7 +46,7 @@ function MyPageContent() {
     const fetchAux = async () => {
       const [tours, msgs] = await Promise.all([
         supabase.from('tour_types').select('slug, name'),
-        supabase.from('payment_messages').select('message_key, title, body'),
+        supabase.from('payment_messages').select('message_key, message_text, description'),
       ]);
       if (tours.data) {
         const map: Record<string, string> = {};
@@ -153,10 +155,10 @@ function MyPageContent() {
     if (!confirmTarget || !confirmPreview) return '';
     const key = confirmPreview.freeCancel ? 'cancel_confirm_no_fee' : 'cancel_confirm_with_fee';
     const msg = paymentMessages[key];
-    if (!msg?.body) return '';
+    if (!msg?.message_text) return '';
     const dateObj = new Date(confirmTarget.visit_date + 'T00:00:00');
     const dateLabel = `${dateObj.getFullYear()}年${dateObj.getMonth() + 1}月${dateObj.getDate()}日`;
-    return applyPlaceholders(msg.body, {
+    return applyPlaceholders(msg.message_text, {
       cancel_fee: confirmPreview.fee.toLocaleString(),
       rate: confirmPreview.rate,
       amount: confirmPreview.tourAmount.toLocaleString(),
@@ -169,7 +171,7 @@ function MyPageContent() {
   const confirmTitle = useMemo(() => {
     if (!confirmPreview) return '';
     const key = confirmPreview.freeCancel ? 'cancel_confirm_no_fee' : 'cancel_confirm_with_fee';
-    return paymentMessages[key]?.title || (confirmPreview.freeCancel ? 'キャンセルの確認' : 'キャンセル料のご確認');
+    return paymentMessages[key]?.description || (confirmPreview.freeCancel ? 'キャンセルの確認' : 'キャンセル料のご確認');
   }, [confirmPreview, paymentMessages]);
 
   const handleResendQr = async (id: string) => {

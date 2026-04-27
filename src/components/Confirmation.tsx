@@ -14,10 +14,12 @@ interface ConfirmationProps {
   onComplete: (orderNo: string) => void;
 }
 
+// payment_messages テーブルの実カラムは message_key / message_text / description。
+// title / body は誤りで、SELECT すると 400 になる。
 type PaymentMessage = {
   message_key: string;
-  title: string | null;
-  body: string | null;
+  message_text: string | null;
+  description: string | null;
 };
 
 type TourCancelPolicy = {
@@ -70,7 +72,10 @@ export default function Confirmation({ tour, selectedDate, timeSlot, ticketCount
     const checkFirstTime = async () => {
       try {
         // has_first_visit_free 適用判定:
-        //   同一email × 同一tour_type で payment_status が captured / cancel_charged の予約があれば2回目以降。
+        //   同一email × 同一tour_type で payment_status が
+        //   authorized / captured / cancel_charged のいずれかの予約があれば2回目以降。
+        //   authorized を含めないと、未チェックインのオーソリ済み予約が複数あった場合に
+        //   全て初回扱いになり、無料体験が複数回適用されてしまう不具合が起きる。
         const email = (profile?.email || user.email || '').trim().toLowerCase();
         if (!email) {
           setIsFirstTime(true);
@@ -81,7 +86,7 @@ export default function Confirmation({ tour, selectedDate, timeSlot, ticketCount
           .select('id')
           .eq('buyer_email', email)
           .eq('tour_type', tour.slug)
-          .in('payment_status', ['captured', 'cancel_charged'])
+          .in('payment_status', ['authorized', 'captured', 'cancel_charged'])
           .limit(1);
 
         if (fetchError) {
@@ -106,7 +111,7 @@ export default function Confirmation({ tour, selectedDate, timeSlot, ticketCount
           .select('content_key, title, body')
           .eq('content_key', 'cancellation_policy')
           .maybeSingle(),
-        supabase.from('payment_messages').select('message_key, title, body'),
+        supabase.from('payment_messages').select('message_key, message_text, description'),
         supabase
           .from('tour_types')
           .select('has_first_visit_free, cancel_policy_2days_rate, cancel_policy_1day_rate, cancel_policy_today_rate')
@@ -135,8 +140,8 @@ export default function Confirmation({ tour, selectedDate, timeSlot, ticketCount
   }, [paymentMessages, tourPolicy, isFirstTime]);
 
   const renderedConfirmBody = useMemo(() => {
-    if (!confirmMessage?.body) return '';
-    return applyPlaceholders(confirmMessage.body, {
+    if (!confirmMessage?.message_text) return '';
+    return applyPlaceholders(confirmMessage.message_text, {
       amount: totalAmount.toLocaleString(),
       buyer_name: displayName,
       visit_date: dateLabel,
@@ -387,7 +392,7 @@ export default function Confirmation({ tour, selectedDate, timeSlot, ticketCount
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="bg-white rounded-xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto">
             <h3 className="text-lg font-bold text-gray-800 mb-3">
-              {confirmMessage?.title || 'お支払い前の確認'}
+              {confirmMessage?.description || 'お支払い前の確認'}
             </h3>
             <p className="text-sm text-gray-700 whitespace-pre-line leading-relaxed">
               {renderedConfirmBody || `クレジットカードで ¥${totalAmount.toLocaleString()} のオーソリ（与信確保）を行います。`}
