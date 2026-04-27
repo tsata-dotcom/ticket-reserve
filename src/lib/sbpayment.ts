@@ -52,15 +52,19 @@ export function generateHashcode(values: string[], hashKey: string): string {
   return createHash("sha1").update(concatenated, "utf8").digest("hex");
 }
 
+// SBペイメントサーバーは JST 基準で時刻判定を行うため、Vercel(UTC)で getHours() を使うと
+// JST との 9 時間ズレで limit_second(600) を超えてリクエスト拒否される。
+// Date を UTC+9h オフセット後に getUTC* で読み出し、JST のタイムスタンプを文字列化する。
 export function formatRequestDate(date: Date = new Date()): string {
+  const jst = new Date(date.getTime() + 9 * 60 * 60 * 1000);
   const pad = (n: number) => String(n).padStart(2, "0");
   return (
-    date.getFullYear().toString() +
-    pad(date.getMonth() + 1) +
-    pad(date.getDate()) +
-    pad(date.getHours()) +
-    pad(date.getMinutes()) +
-    pad(date.getSeconds())
+    jst.getUTCFullYear().toString() +
+    pad(jst.getUTCMonth() + 1) +
+    pad(jst.getUTCDate()) +
+    pad(jst.getUTCHours()) +
+    pad(jst.getUTCMinutes()) +
+    pad(jst.getUTCSeconds())
   );
 }
 
