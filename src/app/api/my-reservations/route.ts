@@ -19,10 +19,15 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: '認証に失敗しました' }, { status: 401 });
   }
 
+  // status が 'pending_payment' / 'payment_failed' の予約はマイページから除外する。
+  // - pending_payment: SBペイメントのオーソリ待ち（数秒で reserved に昇格する想定）
+  // - payment_failed: 決済失敗。お客様には予約成立として見せない方が混乱が少ない。
+  // 管理画面 (ticket-system) 側は別途すべてのステータスを表示する。
   const { data: reservations, error } = await supabase
     .from('reservations')
     .select('*')
     .eq('customer_id', user.id)
+    .not('status', 'in', '("pending_payment","payment_failed")')
     .order('visit_date', { ascending: false });
 
   if (error) {

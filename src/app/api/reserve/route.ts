@@ -162,6 +162,11 @@ export async function POST(request: NextRequest) {
       today: Number(tourRecord.cancel_policy_today_rate ?? 0),
     };
 
+    // 有料コースは決済オーソリ完了まで status='pending_payment' で保留する。
+    // /api/payment/callback でオーソリ成功時に 'reserved' に昇格。NG時は 'payment_failed'。
+    // これによりオーソリ未完了の予約がマイページに「予約済」として誤表示されるのを防ぐ。
+    // ※ availability API は status != 'cancelled' で集計するため、pending_payment 中も
+    //   枠は確保される（決済処理中の競合予約を防ぐ）。
     const insertPayload: Record<string, unknown> = {
       order_no: orderNo,
       buyer_name: displayName,
@@ -175,7 +180,7 @@ export async function POST(request: NextRequest) {
       total_amount,
       customer_id: user.id,
       booking_source: 'web',
-      status: 'reserved',
+      status: requiresPayment ? 'pending_payment' : 'reserved',
       payment_method: finalPaymentMethod,
       cancel_policy_snapshot: cancelPolicySnapshot,
       payment_status: requiresPayment ? 'pending' : 'free',

@@ -115,6 +115,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // オーソリ成功 → status を 'reserved' に昇格させてマイページで「予約済」として表示できるようにする。
     const { error: updateError } = await supabase
       .from("reservations")
       .update({
@@ -123,6 +124,7 @@ export async function POST(request: NextRequest) {
         payment_status: "authorized",
         payment_completed_at: new Date().toISOString(),
         is_first_visit: isFirstVisit,
+        status: "reserved",
       })
       .eq("id", reservationId);
 
@@ -164,10 +166,12 @@ export async function POST(request: NextRequest) {
     return plainResponse("OK");
   }
 
-  // res_result が NG: failed としてマーク。レスポンスは仕様上 OK を返す。
+  // res_result が NG: failed としてマーク + status='payment_failed' に変更
+  // （マイページの予約一覧から除外され、お客様には決済失敗が分かるようにする）。
+  // レスポンス自体は SBペイメントの仕様上 OK を返す。
   const { error: failError } = await supabase
     .from("reservations")
-    .update({ payment_status: "failed" })
+    .update({ payment_status: "failed", status: "payment_failed" })
     .eq("id", reservationId);
 
   if (failError) {
