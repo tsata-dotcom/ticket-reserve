@@ -163,13 +163,13 @@ function buildOrderId(reservationId: string): string {
   return `kf_${stripped.substring(0, 35)}`;
 }
 
-// SBペイメントのリンク型購入要求では item_name は Shift-JIS バイト列を Base64 にして送信する。
-// 文字数制限は40文字（生文字ベース）なので、まず40文字で切ってから Shift-JIS → Base64 変換する。
-// ハッシュ計算と form 送信値の両方でこの Base64 文字列を使用する。
-export function encodeItemName(name: string): string {
-  const truncated = name.length > 40 ? name.substring(0, 40) : name;
-  const sjisBytes = iconv.encode(truncated, "Shift_JIS");
-  return sjisBytes.toString("base64");
+// item_name は SBペイメントのリンク型では「Shift-JIS の日本語生文字列」として送信する仕様
+// （Base64 化はしない）。HTML レスポンスを Shift-JIS で返すため、ブラウザが form POST 時に
+// accept-charset="Shift_JIS" に従って自動的に Shift-JIS バイトでエンコードして送る。
+// 文字数制限は 40 文字。ハッシュ計算は実送信バイト（= Shift-JIS）と一致させる必要があるため、
+// 連結用バッファを組み立てる箇所で iconv.encode(..., "Shift_JIS") する（buildLinkFormParams 内）。
+function truncateItemName(name: string): string {
+  return name.length > 40 ? name.substring(0, 40) : name;
 }
 
 export function buildLinkFormParams(
@@ -192,8 +192,10 @@ export function buildLinkFormParams(
     order_id,
     item_id: reservation.tourTypeSlug,
     pay_item_id: "", // 外部決済機関商品ID（未使用）。空文字でもフォーム送信・ハッシュ計算ともに必須。
-    // item_name は Shift-JIS → Base64 で送信。SBペイメント側で Base64 デコード → Shift-JIS で復元される。
-    item_name: encodeItemName(reservation.tourTypeName),
+    // item_name は日本語UTF-8をそのまま params に保持。HTML を Shift-JIS で返す & form の
+    // accept-charset="Shift_JIS" によりブラウザが Shift-JIS バイトで送信する。
+    // ハッシュ計算では下で同じ Shift-JIS バイトを使って整合させる。
+    item_name: truncateItemName(reservation.tourTypeName),
     tax: "0",
     amount: String(reservation.amount),
     pay_type: "0",
@@ -211,10 +213,22 @@ export function buildLinkFormParams(
     limit_second: "600",
   };
 
-  // ハッシュ計算は params に格納された値（item_name は Shift-JIS → Base64 済み）を
-  // そのまま連結して SHA1 する。getLinkHashValues が連結順序の単一情報源。
+  // SBペイメント側はクライアントが実送信したバイト列（item_name は Shift-JIS）と同じ値で
+  // ハッシュ検証を行うため、ここでも Buffer ベースで連結する:
+  //   - item_name → Shift-JIS バイト列
+  //   - その他のフィールド（全て ASCII 範囲）→ UTF-8 バイト列（Shift-JIS と一致）
+  // 末尾にハッシュキー（ASCII）を付加して SHA1 する。
   const hashValues = getLinkHashValues(params);
-  const sps_hashcode = generateHashcode(hashValues, config.hashKey);
+  const buffers = hashValues.map((value, index) => {
+    if (LINK_HASH_FIELD_ORDER[index] === "item_name") {
+      return iconv.encode(value, "Shift_JIS");
+    }
+    return Buffer.from(value, "utf-8");
+  });
+  buffers.push(Buffer.from(config.hashKey, "utf-8"));
+  const sps_hashcode = createHash("sha1")
+    .update(Buffer.concat(buffers))
+    .digest("hex");
 
   return { ...params, sps_hashcode };
 }
