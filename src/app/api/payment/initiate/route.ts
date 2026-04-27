@@ -1,11 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import iconv from "iconv-lite";
-import {
-  buildLinkFormParams,
-  getConfig,
-  getLinkHashValues,
-} from "@/lib/sbpayment";
+import { buildLinkFormParams, getConfig } from "@/lib/sbpayment";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -73,21 +69,20 @@ export async function POST(request: NextRequest) {
     });
 
     // ----- デバッグ出力（SBペイメント連携トラブル時の解析用） -----
-    // TODO: 本番前にデバッグログを削除（hashInputString や全paramsJSONには
-    //   email ハッシュ・order_id・金額が含まれるため、本番ログには残さないこと）。
-    // ハッシュ計算と同じ順序・同じ値で連結文字列を再構築してログ出力する。
-    // sps_hashcode 自体はハッシュ入力には含まれないので除外。
-    const { sps_hashcode: _hashOmit, ...hashableParams } = formParams;
-    void _hashOmit;
-    const hashValues = getLinkHashValues(hashableParams);
-    const hashInputString = hashValues.join("");
-    console.log("=== SBPayment Debug ===");
-    console.log("Hash input (before key):", hashInputString);
-    console.log("Generated hashcode:", formParams.sps_hashcode);
-    console.log("item_name (UTF-8 raw):", String(tourTypeName));
-    console.log("item_name (form value):", formParams.item_name);
-    console.log("All params:", JSON.stringify(formParams, null, 2));
-    console.log("=== /SBPayment Debug ===");
+    // SBPAYMENT_DEBUG=true の環境変数が設定されているときのみ出力する。
+    // hashInputString や全 params JSON には email ハッシュ等が含まれるので
+    // 本番では SBPAYMENT_DEBUG=false にすること。ハッシュ入力連結文字列も
+    // 機密情報になるため、ログには主要項目（order_id / amount / item_name /
+    // hashcode）のみに絞る。
+    if ((process.env.SBPAYMENT_DEBUG ?? "").toLowerCase() === "true") {
+      console.log("=== SBPayment Debug ===");
+      console.log("order_id:", formParams.order_id);
+      console.log("amount:", formParams.amount);
+      console.log("item_name (UTF-8 raw):", String(tourTypeName));
+      console.log("item_name (form value):", formParams.item_name);
+      console.log("Generated hashcode:", formParams.sps_hashcode);
+      console.log("=== /SBPayment Debug ===");
+    }
 
     const { error: updateError } = await supabase
       .from("reservations")

@@ -1,7 +1,11 @@
 import { NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import iconv from "iconv-lite";
-import { getConfig, verifyHashcode } from "@/lib/sbpayment";
+import {
+  getConfig,
+  verifyCallbackHashcode,
+  CALLBACK_HASH_FIELD_ORDER,
+} from "@/lib/sbpayment";
 import { sendQrEmail } from "@/lib/qr-mail";
 
 const supabase = createClient(
@@ -49,24 +53,42 @@ export async function POST(request: NextRequest) {
     return plainResponse("NG,bad_request");
   }
 
-  // SBペイメント公式仕様: 「当社からの購入結果（画面返却）のチェックサムについては、
-  //   文字コードをShift-JISで作成してチェックサム値を設定します。」
-  // 現在の verifyHashcode は UTF-8 ベースで実装しているため、結果CGIのハッシュ検証は
-  // 一致しない可能性が高い。本番移行前に Shift-JIS 版検証を別途実装するまで、
-  // ハッシュ不一致でも処理を中断せず警告ログのみ出して続行する。
+  // SBペイメント公式仕様: 結果CGIのチェックサムは Shift-JIS で作成される。
+  // verifyCallbackHashcode で Shift-JIS バイト連結 + SHA1 して検証。
+  // ハッシュ不一致 / 不在の場合: SBペイメント仕様に従いレスポンスは "OK" を返すが、
+  //   DB 更新はスキップしてリプレイ攻撃や偽のコールバックを防ぐ。
+  // 試験環境などで検証が頻繁に失敗するケースに備え、SBPAYMENT_SKIP_HASH_VERIFY=true
+  //   が設定されているときはハッシュ不一致でも処理を続行する（緊急バイパス）。
   const receivedHash = params["sps_hashcode"] ?? "";
   const { hashKey } = getConfig();
   const { sps_hashcode: _omit, ...rest } = params;
   void _omit;
+
+  const skipHashVerify =
+    (process.env.SBPAYMENT_SKIP_HASH_VERIFY ?? "").toLowerCase() === "true";
+
+  let hashOk = true;
   if (!receivedHash) {
-    console.warn("[payment/callback] missing sps_hashcode (continuing anyway)", {
+    console.error("[payment/callback] missing sps_hashcode", {
       order_id: params.order_id,
     });
-  } else if (!verifyHashcode(rest, hashKey, receivedHash)) {
-    // TODO: Shift-JIS 版 verifyHashcode を実装し、本番ではここで NG を返してブロックすること。
-    console.warn("[payment/callback] hash mismatch (continuing anyway)", {
+    hashOk = false;
+  } else if (
+    !verifyCallbackHashcode(rest, CALLBACK_HASH_FIELD_ORDER, hashKey, receivedHash)
+  ) {
+    console.error("[payment/callback] hash mismatch", {
       order_id: params.order_id,
+      received: receivedHash,
     });
+    hashOk = false;
+  }
+
+  if (!hashOk && !skipHashVerify) {
+    // SBペイメント側のリトライを止めるため OK は返しつつ、DB 更新は行わない。
+    return plainResponse("OK");
+  }
+  if (!hashOk && skipHashVerify) {
+    console.warn("[payment/callback] hash invalid but SBPAYMENT_SKIP_HASH_VERIFY=true (proceeding)");
   }
 
   const orderId = params.order_id ?? "";

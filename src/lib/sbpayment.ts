@@ -1,5 +1,6 @@
 import { createHash } from "crypto";
 import { XMLParser } from "fast-xml-parser";
+import iconv from "iconv-lite";
 
 // SBペイメント（ソフトバンクペイメントサービス）連携ユーティリティ。
 // リンク型購入要求 (A01-1) のフォームパラメータ生成と、API型 (XML over HTTPS Basic) の
@@ -225,8 +226,72 @@ export function buildLinkFormParams(
   return { ...params, sps_hashcode };
 }
 
-// 結果CGI (A02-1) のハッシュ検証。
-// 受信パラメータから sps_hashcode 以外を抽出して仕様順に並べ、SHA1再計算して一致するか確認する。
+// ----- 結果CGI (A02-1) のハッシュ検証 -----
+//
+// SBペイメント公式仕様:
+//   「当社からの購入結果（画面返却）のチェックサムについては、
+//    文字コードをShift-JISで作成してチェックサム値を設定します。」
+//
+// つまり結果CGIのハッシュは Shift-JIS バイト連結 + SHA1（リクエスト側の UTF-8 とは違う）。
+// CALLBACK_HASH_FIELD_ORDER は購入要求の都度課金の結果CGI連結順序（A02-1）。
+// success_url / cancel_url / error_url / pagecon_url は結果CGIには含まれない点に注意。
+export const CALLBACK_HASH_FIELD_ORDER: ReadonlyArray<string> = [
+  "pay_method",
+  "merchant_id",
+  "service_id",
+  "cust_code",
+  "sps_cust_no",
+  "sps_payment_no",
+  "order_id",
+  "item_id",
+  "pay_item_id",
+  "item_name",
+  "tax",
+  "amount",
+  "pay_type",
+  "service_type",
+  "terminal_type",
+  "free1",
+  "free2",
+  "free3",
+  "free_csv",
+  "request_date",
+  "res_pay_method",
+  "res_result",
+  "res_tracking_id",
+  "res_sps_cust_no",
+  "res_sps_payment_no",
+  "res_payinfo_key",
+  "res_payment_date",
+  "res_err_code",
+  "res_date",
+  "limit_second",
+];
+
+export function verifyCallbackHashcode(
+  params: Record<string, string>,
+  fieldOrder: ReadonlyArray<string>,
+  hashKey: string,
+  receivedHash: string
+): boolean {
+  // 各フィールドの値を Shift-JIS バイト列にエンコード。
+  // ASCII フィールドは Shift-JIS と同じバイトになるので結果は変わらない。
+  // 日本語を含み得る item_name / free1-3 等のみ実質的な差が出る。
+  const buffers = fieldOrder.map((field) => {
+    const value = params[field] ?? "";
+    return iconv.encode(value, "Shift_JIS");
+  });
+  // ハッシュキーは ASCII なので utf-8 / shift-jis いずれでも同じ。
+  buffers.push(Buffer.from(hashKey, "utf-8"));
+  const computed = createHash("sha1")
+    .update(Buffer.concat(buffers))
+    .digest("hex");
+  return computed.toLowerCase() === receivedHash.toLowerCase();
+}
+
+// 結果CGI (A02-1) のハッシュ検証（旧実装・非推奨）。
+// UTF-8 ベースで連結→SHA1するため、SBペイメント仕様の Shift-JIS 連結とは一致しない。
+// 新規コードは verifyCallbackHashcode を使用すること。
 export function verifyHashcode(
   params: Record<string, string>,
   hashKey: string,
