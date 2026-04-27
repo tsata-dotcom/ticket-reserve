@@ -1,32 +1,63 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { AuthProvider, useAuth } from '@/lib/auth-context';
 import { supabase } from '@/lib/supabase';
 import { Reservation } from '@/lib/types';
 import Header from '@/components/Header';
 
+type PaymentMessage = {
+  message_key: string;
+  title: string | null;
+  body: string | null;
+};
+
+type CancelPreview = {
+  fee: number;
+  rate: number;
+  freeCancel: boolean;
+  tourAmount: number;
+};
+
+function applyPlaceholders(text: string, vars: Record<string, string | number>): string {
+  return text.replace(/\{(\w+)\}/g, (_m, key) =>
+    key in vars ? String(vars[key]) : `{${key}}`
+  );
+}
+
 function MyPageContent() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [tourNameMap, setTourNameMap] = useState<Record<string, string>>({});
+  const [paymentMessages, setPaymentMessages] = useState<Record<string, PaymentMessage>>({});
   const [loading, setLoading] = useState(true);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [resendingId, setResendingId] = useState<string | null>(null);
   const [toast, setToast] = useState('');
+  const [confirmTarget, setConfirmTarget] = useState<Reservation | null>(null);
+  const [confirmPreview, setConfirmPreview] = useState<CancelPreview | null>(null);
+  const [confirmLoading, setConfirmLoading] = useState(false);
 
   useEffect(() => {
-    const fetchTours = async () => {
-      const { data } = await supabase.from('tour_types').select('slug, name');
-      if (data) {
+    const fetchAux = async () => {
+      const [tours, msgs] = await Promise.all([
+        supabase.from('tour_types').select('slug, name'),
+        supabase.from('payment_messages').select('message_key, title, body'),
+      ]);
+      if (tours.data) {
         const map: Record<string, string> = {};
-        for (const t of data) map[t.slug] = t.name;
+        for (const t of tours.data) map[t.slug] = t.name;
         setTourNameMap(map);
       }
+      if (msgs.data) {
+        const map: Record<string, PaymentMessage> = {};
+        for (const m of msgs.data as PaymentMessage[]) map[m.message_key] = m;
+        setPaymentMessages(map);
+      }
     };
-    fetchTours();
+    fetchAux();
   }, []);
 
   const tourLabel = (slug: string) => tourNameMap[slug] || slug;
@@ -54,30 +85,92 @@ function MyPageContent() {
     if (user) fetchReservations();
   }, [user]);
 
-  const handleCancel = async (id: string) => {
-    if (!confirm('この予約をキャンセルしますか？キャンセル後、同じ日時で再予約が可能です。')) return;
-
-    setCancellingId(id);
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) return;
-
-    const res = await fetch('/api/cancel-reservation', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${session.access_token}`,
-      },
-      body: JSON.stringify({ reservation_id: id }),
-    });
-
-    if (res.ok) {
-      setReservations(prev =>
-        prev.map(r => r.id === id ? { ...r, status: 'cancelled' } : r)
-      );
-      alert('予約をキャンセルしました。枠が空きましたので、再度ご予約いただけます。');
+  // キャンセルボタン押下: サーバーから現在のキャンセル料を取得して確認ダイアログを開く。
+  const openCancelDialog = async (r: Reservation) => {
+    setConfirmTarget(r);
+    setConfirmPreview(null);
+    setConfirmLoading(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+      const res = await fetch(`/api/payment/cancel?reservation_id=${r.id}`, {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setConfirmPreview(data as CancelPreview);
+      }
+    } catch (e) {
+      console.error('cancel preview error:', e);
+    } finally {
+      setConfirmLoading(false);
     }
-    setCancellingId(null);
   };
+
+  // ダイアログ「同意してキャンセルする」: /api/payment/cancel に POST。
+  const confirmCancel = async () => {
+    if (!confirmTarget) return;
+    const id = confirmTarget.id;
+    setCancellingId(id);
+
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      setCancellingId(null);
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/payment/cancel', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ reservation_id: id }),
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        setReservations(prev => prev.map(r => r.id === id ? { ...r, status: 'cancelled' } : r));
+        setToast(data.freeCancel ? 'キャンセルを受け付けました' : `キャンセル料 ¥${(data.fee ?? 0).toLocaleString()} を請求しました`);
+        setTimeout(() => setToast(''), 4000);
+      } else {
+        setToast(data.error || 'キャンセルに失敗しました');
+        setTimeout(() => setToast(''), 4000);
+      }
+    } catch (e) {
+      console.error('cancel submit error:', e);
+      setToast('キャンセル処理中にエラーが発生しました');
+      setTimeout(() => setToast(''), 4000);
+    } finally {
+      setCancellingId(null);
+      setConfirmTarget(null);
+      setConfirmPreview(null);
+    }
+  };
+
+  const renderedConfirmBody = useMemo(() => {
+    if (!confirmTarget || !confirmPreview) return '';
+    const key = confirmPreview.freeCancel ? 'cancel_confirm_no_fee' : 'cancel_confirm_with_fee';
+    const msg = paymentMessages[key];
+    if (!msg?.body) return '';
+    const dateObj = new Date(confirmTarget.visit_date + 'T00:00:00');
+    const dateLabel = `${dateObj.getFullYear()}年${dateObj.getMonth() + 1}月${dateObj.getDate()}日`;
+    return applyPlaceholders(msg.body, {
+      cancel_fee: confirmPreview.fee.toLocaleString(),
+      rate: confirmPreview.rate,
+      amount: confirmPreview.tourAmount.toLocaleString(),
+      buyer_name: confirmTarget.buyer_name ?? '',
+      visit_date: dateLabel,
+      time_slot: confirmTarget.time_slot === 'AM' ? '午前の部' : '午後の部',
+    });
+  }, [confirmTarget, confirmPreview, paymentMessages]);
+
+  const confirmTitle = useMemo(() => {
+    if (!confirmPreview) return '';
+    const key = confirmPreview.freeCancel ? 'cancel_confirm_no_fee' : 'cancel_confirm_with_fee';
+    return paymentMessages[key]?.title || (confirmPreview.freeCancel ? 'キャンセルの確認' : 'キャンセル料のご確認');
+  }, [confirmPreview, paymentMessages]);
 
   const handleResendQr = async (id: string) => {
     setResendingId(id);
@@ -149,7 +242,6 @@ function MyPageContent() {
           </div>
         )}
 
-        {/* Upcoming reservations */}
         <section className="mb-8">
           <h2 className="text-lg font-bold text-gray-700 mb-3 flex items-center gap-2">
             📅 今後の予約
@@ -182,7 +274,7 @@ function MyPageContent() {
                         {resendingId === r.id ? '送信中...' : 'QRメールを再送信'}
                       </button>
                       <button
-                        onClick={() => handleCancel(r.id)}
+                        onClick={() => openCancelDialog(r)}
                         disabled={cancellingId === r.id}
                         className="text-red-500 hover:text-red-700 font-bold text-sm disabled:opacity-50"
                       >
@@ -196,7 +288,6 @@ function MyPageContent() {
           )}
         </section>
 
-        {/* Past reservations */}
         <section>
           <h2 className="text-lg font-bold text-gray-700 mb-3">📋 過去の予約</h2>
           {past.length === 0 ? (
@@ -222,6 +313,44 @@ function MyPageContent() {
           )}
         </section>
       </main>
+
+      {/* キャンセル確認ダイアログ */}
+      {confirmTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto">
+            {confirmLoading || !confirmPreview ? (
+              <div className="flex justify-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+              </div>
+            ) : (
+              <>
+                <h3 className="text-lg font-bold text-gray-800 mb-3">{confirmTitle}</h3>
+                <p className="text-sm text-gray-700 whitespace-pre-line leading-relaxed">
+                  {renderedConfirmBody || (confirmPreview.freeCancel
+                    ? 'この予約をキャンセルします。キャンセル料は発生しません。'
+                    : `キャンセル料として ¥${confirmPreview.fee.toLocaleString()}（${confirmPreview.rate}%）が発生します。よろしいですか？`)}
+                </p>
+                <div className="mt-6 flex gap-3">
+                  <button
+                    onClick={() => { setConfirmTarget(null); setConfirmPreview(null); }}
+                    disabled={cancellingId === confirmTarget.id}
+                    className="flex-1 py-2 border-2 border-gray-300 rounded-lg text-gray-600 font-bold hover:bg-gray-50"
+                  >
+                    戻る
+                  </button>
+                  <button
+                    onClick={confirmCancel}
+                    disabled={cancellingId === confirmTarget.id}
+                    className="flex-1 py-2 bg-red-600 text-white rounded-lg font-bold hover:bg-red-700 disabled:opacity-50"
+                  >
+                    {cancellingId === confirmTarget.id ? '処理中...' : '同意してキャンセルする'}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </>
   );
 }
