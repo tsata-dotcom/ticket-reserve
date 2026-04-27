@@ -1,6 +1,5 @@
 import { createHash } from "crypto";
 import { XMLParser } from "fast-xml-parser";
-import iconv from "iconv-lite";
 
 // SBペイメント（ソフトバンクペイメントサービス）連携ユーティリティ。
 // リンク型購入要求 (A01-1) のフォームパラメータ生成と、API型 (XML over HTTPS Basic) の
@@ -213,22 +212,15 @@ export function buildLinkFormParams(
     limit_second: "600",
   };
 
-  // SBペイメント側はクライアントが実送信したバイト列（item_name は Shift-JIS）と同じ値で
-  // ハッシュ検証を行うため、ここでも Buffer ベースで連結する:
-  //   - item_name → Shift-JIS バイト列
-  //   - その他のフィールド（全て ASCII 範囲）→ UTF-8 バイト列（Shift-JIS と一致）
-  // 末尾にハッシュキー（ASCII）を付加して SHA1 する。
+  // SBペイメント公式仕様:
+  //   「リクエストの各タグエレメントの値を項目定義順に文字列結合し、最後にハッシュキーを
+  //    結合した値を『UTF-8』へ変換して『SHA1』にてハッシュ演算を行ってください。」
+  // つまりリクエスト側ハッシュは UTF-8 ベース。item_name に日本語UTF-8 が入っていても
+  // そのまま join("") + hashKey して SHA1(utf-8) で計算する。
+  // ※レスポンス（結果CGI）側は Shift-JIS でチェックサムを作る仕様なので、verifyHashcode
+  //   は将来的に別途 Shift-JIS 対応が必要。
   const hashValues = getLinkHashValues(params);
-  const buffers = hashValues.map((value, index) => {
-    if (LINK_HASH_FIELD_ORDER[index] === "item_name") {
-      return iconv.encode(value, "Shift_JIS");
-    }
-    return Buffer.from(value, "utf-8");
-  });
-  buffers.push(Buffer.from(config.hashKey, "utf-8"));
-  const sps_hashcode = createHash("sha1")
-    .update(Buffer.concat(buffers))
-    .digest("hex");
+  const sps_hashcode = generateHashcode(hashValues, config.hashKey);
 
   return { ...params, sps_hashcode };
 }
