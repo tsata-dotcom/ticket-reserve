@@ -75,6 +75,16 @@ export interface Reservation {
   payment_captured_at?: string | null;
   payment_cancelled_at?: string | null;
   cancellation_fee?: number | null;
+  // SBペイメント連携 (Phase 2)
+  payment_status?: string | null;
+  authorized_amount?: number | null;
+  captured_amount?: number | null;
+  is_first_visit?: boolean | null;
+  cancel_policy_snapshot?: {
+    '2days'?: number;
+    '1day'?: number;
+    today?: number;
+  } | null;
 }
 
 export interface CustomerProfile {

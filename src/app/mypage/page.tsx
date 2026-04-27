@@ -28,6 +28,63 @@ function applyPlaceholders(text: string, vars: Record<string, string | number>):
   );
 }
 
+// 決済ステータスに対応する日本語ラベルと色クラス。
+// pending / failed は /api/my-reservations の段階で除外されるためここでは扱わない。
+function paymentStatusLabel(r: Reservation): string | null {
+  const captured = (r.captured_amount ?? 0).toLocaleString();
+  switch (r.payment_status) {
+    case 'authorized':
+      return '決済済み（チェックイン時にご請求）';
+    case 'captured':
+      return `お支払い済み ¥${captured}`;
+    case 'auth_cancelled':
+      return '初回無料（課金なし）';
+    case 'cancel_charged':
+      return `キャンセル料 ¥${captured} 請求済み`;
+    case 'cancelled':
+      return 'キャンセル済み（課金なし）';
+    case 'refunded':
+      return `返金済み ¥${captured}`;
+    default:
+      return null;
+  }
+}
+
+function paymentStatusColor(status?: string | null): string {
+  switch (status) {
+    case 'authorized':
+    case 'captured':
+    case 'refunded':
+      return 'text-green-700 font-bold';
+    case 'cancel_charged':
+      return 'text-orange-600 font-bold';
+    case 'auth_cancelled':
+    case 'cancelled':
+    default:
+      return 'text-gray-500';
+  }
+}
+
+function PaymentInfoSection({ reservation }: { reservation: Reservation }) {
+  const label = paymentStatusLabel(reservation);
+  const policy = reservation.cancel_policy_snapshot;
+  if (!label && !policy) return null;
+  return (
+    <div className="mt-3 pt-3 border-t border-gray-100 space-y-1">
+      {label && (
+        <p className={`text-xs ${paymentStatusColor(reservation.payment_status)}`}>
+          {label}
+        </p>
+      )}
+      {reservation.payment_status === 'authorized' && policy && (
+        <p className="text-xs text-gray-500">
+          キャンセル料: 2日前 {policy['2days'] ?? 0}% / 前日 {policy['1day'] ?? 0}% / 当日 {policy.today ?? 0}%
+        </p>
+      )}
+    </div>
+  );
+}
+
 function MyPageContent() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
@@ -267,7 +324,8 @@ function MyPageContent() {
                       <span className={`text-xs px-2 py-1 rounded-full font-bold ${s.color}`}>{s.text}</span>
                     </div>
                     <div className="text-sm text-gray-500 mb-2">{r.ticket_count}名 / ¥{r.total_amount.toLocaleString()}</div>
-                    <div className="flex items-center justify-between">
+                    <PaymentInfoSection reservation={r} />
+                    <div className="flex items-center justify-between mt-3">
                       <button
                         onClick={() => handleResendQr(r.id)}
                         disabled={resendingId === r.id}
@@ -308,6 +366,7 @@ function MyPageContent() {
                       <span className={`text-xs px-2 py-1 rounded-full font-bold ${s.color}`}>{s.text}</span>
                     </div>
                     <span className="text-sm text-gray-500">{r.ticket_count}名 / ¥{r.total_amount.toLocaleString()}</span>
+                    <PaymentInfoSection reservation={r} />
                   </div>
                 );
               })}
