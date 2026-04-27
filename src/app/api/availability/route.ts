@@ -58,15 +58,18 @@ export async function GET(request: NextRequest) {
     ? Array.from(new Set([tourSlug, tourName]))
     : [tourSlug];
 
-  // status はキャンセル以外を対象。'reserved' / 'confirmed' / その他いずれの enum
-  // 値でも、キャンセル以外なら残数集計に含める (.eq('status', 'reserved') だと
-  // 'confirmed' などが取りこぼされて 5/6 AM の test 予約が remaining から
-  // 差し引かれない不具合になっていた)。
+  // 枠を実際に消費するのは「正規の予約として確定したレコード」のみとする。
+  // 'cancelled' に加えて以下も枠カウントから除外:
+  //   - pending_payment: SBペイメント決済画面遷移中（callback で reserved に昇格）。
+  //     これを枠消費させると、決済中の数秒〜離脱時間中、他のお客様が予約できなくなる。
+  //   - payment_failed: 決済失敗。実体は予約成立していない。
+  //   - expired:        /api/payment/cleanup で時間切れにした pending_payment。
+  // 残る reserved / checked_in / confirmed 等は引き続き枠消費としてカウントする。
   const { data: reservations, error: resErr } = await supabase
     .from('reservations')
     .select('visit_date, time_slot, ticket_count')
     .in('tour_type', tourTypeValues)
-    .neq('status', 'cancelled')
+    .not('status', 'in', '("cancelled","expired","payment_failed","pending_payment")')
     .gte('visit_date', startDate)
     .lte('visit_date', endDate);
 
