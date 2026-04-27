@@ -84,6 +84,9 @@ export type LinkFormParams = {
   sps_payment_no: string;
   order_id: string;
   item_id: string;
+  // pay_item_id（外部決済機関商品ID）。今回未使用のため空文字で送信するが、
+  // フォーム送信値・ハッシュ計算ともに必須項目なので含める必要がある。
+  pay_item_id: string;
   item_name: string;
   tax: string;
   amount: string;
@@ -115,6 +118,7 @@ export const LINK_HASH_FIELD_ORDER: ReadonlyArray<keyof Omit<LinkFormParams, "sp
   "sps_payment_no",
   "order_id",
   "item_id",
+  "pay_item_id", // SEQ 9
   "item_name",
   "tax",
   "amount",
@@ -155,9 +159,9 @@ function buildOrderId(reservationId: string): string {
   return `kf_${stripped.substring(0, 35)}`;
 }
 
-// item_name は本来 Shift-JIS → Base64 化して送信する仕様だが、現在は SBペイメント側のハッシュ
-// 検証エラー切り分けのため一時的にASCII（tourTypeSlug）を使う運用。エンコーディング問題と
-// ハッシュ計算ロジック問題を切り分け終わったら、Shift-JIS → Base64 化に戻すこと。
+// SBペイメントのリンク型購入要求では item_name は Shift-JIS バイト列を Base64 にして送信する。
+// 文字数制限は40文字（生文字ベース）なので、まず40文字で切ってから Shift-JIS → Base64 変換する。
+// ハッシュ計算と form 送信値の両方でこの Base64 文字列を使用する。
 export function encodeItemName(name: string): string {
   const truncated = name.length > 40 ? name.substring(0, 40) : name;
   const sjisBytes = iconv.encode(truncated, "Shift_JIS");
@@ -183,10 +187,9 @@ export function buildLinkFormParams(
     sps_payment_no: "",
     order_id,
     item_id: reservation.tourTypeSlug,
-    // [DEBUG] 切り分け中: item_name を一時的に tourTypeSlug（ASCII）にして
-    // 「ハッシュ計算ロジック自体は正しいか / 日本語エンコーディングだけが問題か」を切り分ける。
-    // 切り分け完了後は encodeItemName(reservation.tourTypeName) に戻す。
-    item_name: reservation.tourTypeSlug,
+    pay_item_id: "", // 外部決済機関商品ID（未使用）。空文字でもフォーム送信・ハッシュ計算ともに必須。
+    // item_name は Shift-JIS → Base64 で送信。SBペイメント側で Base64 デコード → Shift-JIS で復元される。
+    item_name: encodeItemName(reservation.tourTypeName),
     tax: "0",
     amount: String(reservation.amount),
     pay_type: "0",
@@ -204,7 +207,7 @@ export function buildLinkFormParams(
     limit_second: "600",
   };
 
-  // ハッシュ計算は params に格納された値（item_name はASCIIスラッグ／本番ではBase64）を
+  // ハッシュ計算は params に格納された値（item_name は Shift-JIS → Base64 済み）を
   // そのまま連結して SHA1 する。getLinkHashValues が連結順序の単一情報源。
   const hashValues = getLinkHashValues(params);
   const sps_hashcode = generateHashcode(hashValues, config.hashKey);
@@ -230,6 +233,7 @@ export function verifyHashcode(
     "sps_payment_no",
     "order_id",
     "item_id",
+    "pay_item_id",
     "item_name",
     "tax",
     "amount",
