@@ -1,5 +1,6 @@
 import { createHash } from "crypto";
 import { XMLParser } from "fast-xml-parser";
+import iconv from "iconv-lite";
 
 // SBペイメント（ソフトバンクペイメントサービス）連携ユーティリティ。
 // リンク型購入要求 (A01-1) のフォームパラメータ生成と、API型 (XML over HTTPS Basic) の
@@ -154,9 +155,13 @@ function buildOrderId(reservationId: string): string {
   return `kf_${stripped.substring(0, 35)}`;
 }
 
-// item_name は 40 文字以内。Shift-JISでも安全側に倒すため文字数で切る。
-function truncateItemName(name: string): string {
-  return name.length > 40 ? name.substring(0, 40) : name;
+// SBペイメントのリンク型購入要求では item_name は Shift-JIS バイト列を Base64 にして送信する。
+// 文字数制限は40文字（生文字ベース）なので、まず40文字で切ってから Shift-JIS → Base64 変換する。
+// ハッシュ計算と form 送信値の両方でこの Base64 文字列を使用する。
+export function encodeItemName(name: string): string {
+  const truncated = name.length > 40 ? name.substring(0, 40) : name;
+  const sjisBytes = iconv.encode(truncated, "Shift_JIS");
+  return sjisBytes.toString("base64");
 }
 
 export function buildLinkFormParams(
@@ -178,7 +183,8 @@ export function buildLinkFormParams(
     sps_payment_no: "",
     order_id,
     item_id: reservation.tourTypeSlug,
-    item_name: truncateItemName(reservation.tourTypeName),
+    // item_name は Shift-JIS → Base64 で送信。SBペイメント側で Base64 デコード → Shift-JIS で復元される。
+    item_name: encodeItemName(reservation.tourTypeName),
     tax: "0",
     amount: String(reservation.amount),
     pay_type: "0",
@@ -196,7 +202,7 @@ export function buildLinkFormParams(
     limit_second: "600",
   };
 
-  // ※リンク型のため item_name は Base64 化せず生文字列のまま連結する。
+  // item_name は params.item_name に Base64 値が入っているため、ハッシュ計算でも Base64 値を使う。
   const hashValues = getLinkHashValues(params);
   const sps_hashcode = generateHashcode(hashValues, config.hashKey);
 

@@ -82,7 +82,8 @@ export async function POST(request: NextRequest) {
     console.log("=== SBPayment Debug ===");
     console.log("Hash input (before key):", hashInputString);
     console.log("Generated hashcode:", formParams.sps_hashcode);
-    console.log("item_name (UTF-8):", formParams.item_name);
+    console.log("item_name (UTF-8 raw):", String(tourTypeName));
+    console.log("item_name (Base64):", formParams.item_name);
     console.log("All params:", JSON.stringify(formParams, null, 2));
     console.log("=== /SBPayment Debug ===");
 
