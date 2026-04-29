@@ -102,10 +102,11 @@ export async function POST(request: NextRequest) {
   const resTrackingId = params.res_tracking_id ?? "";
 
   // 当該予約を読み出して、初回判定 / QRメール送信に必要な情報を取得。
+  // cancel_policy_snapshot はQRメールに記載するキャンセルポリシー表のソース。
   const { data: reservation, error: fetchError } = await supabase
     .from("reservations")
     .select(
-      "id, order_no, buyer_email, buyer_name, tour_type, visit_date, time_slot, ticket_count, total_amount, qr_sent"
+      "id, order_no, buyer_email, buyer_name, tour_type, visit_date, time_slot, ticket_count, total_amount, qr_sent, cancel_policy_snapshot"
     )
     .eq("id", reservationId)
     .maybeSingle();
@@ -169,12 +170,22 @@ export async function POST(request: NextRequest) {
     // QRメール送信（オーソリ完了後の本予約として案内）。多重送信防止に qr_sent を見る。
     if (!reservation.qr_sent && reservation.buyer_email) {
       try {
+        // tour_types は name と has_first_visit_free をまとめて取得。
+        // tour_type には slug / 日本語 name が混在する可能性があるため or 検索で拾う。
         const { data: tourRow } = await supabase
           .from("tour_types")
-          .select("name")
-          .eq("slug", reservation.tour_type)
+          .select("slug, name, has_first_visit_free")
+          .or(`slug.eq.${reservation.tour_type},name.eq.${reservation.tour_type}`)
           .maybeSingle();
-        const tourName = (tourRow as { name?: string } | null)?.name ?? reservation.tour_type;
+        const tourRecord = tourRow as
+          | { slug?: string; name?: string; has_first_visit_free?: boolean }
+          | null;
+        const tourName = tourRecord?.name ?? reservation.tour_type;
+
+        // 初回無料適用フラグ:
+        //   コースが has_first_visit_free=true で、かつこの予約が初回 (is_first_visit=true)。
+        const isFirstVisitFree =
+          isFirstVisit && tourRecord?.has_first_visit_free === true;
 
         await sendQrEmail({
           to: reservation.buyer_email,
@@ -185,6 +196,8 @@ export async function POST(request: NextRequest) {
           timeSlot: reservation.time_slot,
           ticketCount: reservation.ticket_count,
           totalAmount: reservation.total_amount,
+          isFirstVisitFree,
+          cancelPolicy: reservation.cancel_policy_snapshot ?? null,
         });
 
         await supabase

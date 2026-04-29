@@ -202,6 +202,9 @@ export async function POST(request: NextRequest) {
     // 無料ルートのみ即時にQRメール送信。
     if (!requiresPayment) {
       try {
+        // 無料ルートはオーソリ自体が走らないため、初回無料の文言ではなく
+        // 「料金 ¥0」相当の通常案内（料金表示は totalAmount=0）。
+        // キャンセルポリシーは予約スナップショットを使う。
         const emailResult = await sendQrEmail({
           to: profile.email,
           displayName,
@@ -211,6 +214,8 @@ export async function POST(request: NextRequest) {
           timeSlot: time_slot,
           ticketCount: count,
           totalAmount: total_amount,
+          isFirstVisitFree: false,
+          cancelPolicy: cancelPolicySnapshot,
         });
 
         console.log('Email send result:', emailResult);

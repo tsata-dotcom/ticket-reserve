@@ -42,14 +42,20 @@ export async function POST(request: NextRequest) {
     }
 
     // tour_type は新規予約ではスラッグ（例: karamuki-tour）が入るため、
-    // 表示用にコース名を解決する。見つからなければ生の値をそのまま使う。
+    // slug / name 両対応で has_first_visit_free も含めて解決する。
     let tourTypeLabel: string = reservation.tour_type;
+    let hasFirstVisitFree = false;
     const { data: tourRecord } = await supabase
       .from('tour_types')
-      .select('name')
-      .eq('slug', reservation.tour_type)
+      .select('slug, name, has_first_visit_free')
+      .or(`slug.eq.${reservation.tour_type},name.eq.${reservation.tour_type}`)
       .maybeSingle();
-    if (tourRecord?.name) tourTypeLabel = tourRecord.name;
+    if (tourRecord?.name) tourTypeLabel = tourRecord.name as string;
+    if (tourRecord?.has_first_visit_free === true) hasFirstVisitFree = true;
+
+    // 初回無料適用フラグ: コースが has_first_visit_free=true で、かつこの予約が初回。
+    const isFirstVisitFree =
+      hasFirstVisitFree && reservation.is_first_visit === true;
 
     // QRメール再送信
     const emailResult = await sendQrEmail({
@@ -61,6 +67,8 @@ export async function POST(request: NextRequest) {
       timeSlot: reservation.time_slot,
       ticketCount: reservation.ticket_count,
       totalAmount: reservation.total_amount,
+      isFirstVisitFree,
+      cancelPolicy: reservation.cancel_policy_snapshot ?? null,
     });
 
     console.log('QR resend result:', emailResult);
