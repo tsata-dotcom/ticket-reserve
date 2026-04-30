@@ -280,38 +280,41 @@ export function verifyCallbackHashcode(
   hashKey: string,
   receivedHash: string
 ): boolean {
-  // 各フィールドの値を Shift-JIS バイト列にエンコード。
-  // ASCII フィールドは Shift-JIS と同じバイトになるので結果は変わらない。
-  // 日本語を含み得る item_name / free1-3 等のみ実質的な差が出る。
-  const buffers = fieldOrder.map((field) => {
-    const value = params[field] ?? "";
-    return iconv.encode(value, "Shift_JIS");
-  });
-  // ハッシュキーは ASCII なので utf-8 / shift-jis いずれでも同じ。
-  buffers.push(Buffer.from(hashKey, "utf-8"));
-  const computed = createHash("sha1")
-    .update(Buffer.concat(buffers))
+  const received = receivedHash.toUpperCase();
+
+  // 方式1: UTF-8 連結 + SHA1（リクエスト側と同じ方式）
+  const utf8Concat =
+    fieldOrder.map((f) => params[f] ?? "").join("") + hashKey;
+  const utf8Hash = createHash("sha1")
+    .update(utf8Concat, "utf-8")
     .digest("hex")
     .toUpperCase();
-  const expected = receivedHash.toUpperCase();
 
-  // TODO: 本番前にデバッグログを削除（item_name や order_id 等が記録される）。
-  // ハッシュ不一致の解析用。各フィールドの値・computed/received・item_name の
-  // Shift-JIS バイト列(hex) を Vercel ログから確認できる。
-  console.log(
-    "[hashcheck] field values:",
-    fieldOrder.map((f) => `${f}=${params[f] ?? ""}`).join(" | ")
+  // 方式2: Shift-JIS バイト連結 + SHA1（公式仕様の結果CGI想定）
+  const sjisBuffers = fieldOrder.map((f) =>
+    iconv.encode(params[f] ?? "", "Shift_JIS")
   );
-  console.log("[hashcheck] computed:", computed);
-  console.log("[hashcheck] received:", expected);
-  console.log("[hashcheck] item_name raw:", params["item_name"]);
-  console.log(
-    "[hashcheck] item_name sjis hex:",
-    iconv.encode(params["item_name"] ?? "", "Shift_JIS").toString("hex")
-  );
+  sjisBuffers.push(Buffer.from(hashKey, "utf-8"));
+  const sjisHash = createHash("sha1")
+    .update(Buffer.concat(sjisBuffers))
+    .digest("hex")
+    .toUpperCase();
 
-  // SBペイメントのレスポンスハッシュは大文字16進。比較は大文字寄せで行う。
-  return computed === expected;
+  // TODO: 本番前にデバッグログを削除し、実際に一致した方式のみを残すこと。
+  // どちらの符号化で SBペイメントが SHA1 を取っているかをログで確定させる。
+  console.log(
+    "[hashcheck] UTF-8 hash:",
+    utf8Hash,
+    utf8Hash === received ? "✅ MATCH" : "❌"
+  );
+  console.log(
+    "[hashcheck] SJIS hash:",
+    sjisHash,
+    sjisHash === received ? "✅ MATCH" : "❌"
+  );
+  console.log("[hashcheck] received:", received);
+
+  return utf8Hash === received || sjisHash === received;
 }
 
 // 結果CGI (A02-1) のハッシュ検証（旧実装・非推奨）。
