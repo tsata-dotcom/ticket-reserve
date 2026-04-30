@@ -52,7 +52,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const fetchProfile = async (userId: string): Promise<CustomerProfile | null> => {
     try {
       const { data, error } = await withTimeout(
-        supabase.from('customer_profiles').select('*').eq('id', userId).single(),
+        // 新規ユーザーで profile 未作成の状態でも PGRST116 を投げないよう maybeSingle を使う。
+        // データが無い場合は data=null が返ってくるだけで error は付かない。
+        supabase.from('customer_profiles').select('*').eq('id', userId).maybeSingle(),
         5000,
         TIMEOUT_FALLBACK as any
       );
