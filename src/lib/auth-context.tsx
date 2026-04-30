@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
-import { createContext, useContext, useEffect, useRef, useState, ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState, ReactNode } from 'react';
 import { supabase } from './supabase';
 import { User } from '@supabase/supabase-js';
 import { CustomerProfile, FutureshopMemberInfo } from './types';
@@ -49,7 +49,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // verifyOtp 実行中は onAuthStateChange の処理をスキップして競合を避ける
   const isVerifyingRef = useRef(false);
 
-  const fetchProfile = async (userId: string): Promise<CustomerProfile | null> => {
+  // 以下の関数は全て stable な参照（setX は React で stable, supabase は module-scope）
+  // のみ使うため useCallback の deps は []。これにより useEffect の deps に
+  // 入れても再購読を引き起こさない。
+  const fetchProfile = useCallback(async (userId: string): Promise<CustomerProfile | null> => {
     try {
       const { data, error } = await withTimeout(
         // 新規ユーザーで profile 未作成の状態でも PGRST116 を投げないよう maybeSingle を使う。
@@ -68,12 +71,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.error('fetchProfile unexpected error:', e);
       return null;
     }
-  };
+  }, []);
 
   // customer_profiles への書き込みは RLS により anon key からは弾かれるため、
   // 全て /api/customer-profile/upsert（service_role）経由で行う。
   // userId 引数は受けるが、サーバー側で認証ユーザー自身に上書きされる。
-  const upsertProfile = async (
+  const upsertProfile = useCallback(async (
     _userId: string,
     name: string,
     email: string,
@@ -103,10 +106,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.error('upsertProfile unexpected error:', e);
       return { error: e instanceof Error ? e.message : 'プロフィールの作成に失敗しました' };
     }
-  };
+  }, []);
 
   // Futureshop 連携時の customer_profiles 部分更新も同 API 経由で行う。
-  const updateProfileViaApi = async (
+  const updateProfileViaApi = useCallback(async (
     accessToken: string,
     fields: { display_name?: string; phone?: string; futureshop_member_id?: string }
   ): Promise<void> => {
@@ -126,9 +129,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (e) {
       console.error('[customer-profile] update via api error:', e);
     }
-  };
+  }, []);
 
-  const lookupFutureshopMember = async (email: string): Promise<void> => {
+  const lookupFutureshopMember = useCallback(async (email: string): Promise<void> => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return;
@@ -199,9 +202,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.error('[Futureshop] 会員検索エラー:', e);
       setFutureshopMember(null);
     }
-  };
+  }, [fetchProfile, updateProfileViaApi]);
 
-  const handleUserLogin = async (loginUser: User) => {
+  const handleUserLogin = useCallback(async (loginUser: User) => {
     // プロフィール取得・作成
     try {
       const existing = await fetchProfile(loginUser.id);
@@ -222,13 +225,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (loginUser.email) {
       lookupFutureshopMember(loginUser.email);
     }
-  };
+  }, [fetchProfile, upsertProfile, lookupFutureshopMember]);
 
   const refreshProfile = async () => {
     if (user) {
       await fetchProfile(user.id);
     }
   };
+
+  // onAuthStateChange の closure 内で「直前の user」を参照したいが、user を
+  // useEffect の deps に入れると user が変わるたびに subscription が張り直され
+  // (init() も再実行されて setUser → 再レンダ → 再 effect の) 無限ループになる。
+  // そのため最新の user を ref に転写して closure からは ref 経由で参照する。
+  const userRef = useRef<User | null>(null);
+  userRef.current = user;
 
   useEffect(() => {
     const init = async () => {
@@ -251,7 +261,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      const prevUser = user;
+      const prevUser = userRef.current;
       setUser(session?.user ?? null);
 
       if (!session?.user) {
@@ -267,7 +277,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     return () => subscription.unsubscribe();
-  }, []);
+  }, [handleUserLogin]);
 
   const sendOtp = async (email: string): Promise<OtpResult> => {
     try {

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
+export const dynamic = "force-dynamic";
+
 // SBペイメント決済画面で離脱したお客様の予約は status='pending_payment' の
 // まま残り続ける。pending_payment は availability の枠カウントに含めない設計
 // に変更したため運用上の致命傷ではないが、DBクリーンアップとして

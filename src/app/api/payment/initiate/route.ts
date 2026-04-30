@@ -3,6 +3,8 @@ import { createClient } from "@supabase/supabase-js";
 import iconv from "iconv-lite";
 import { buildLinkFormParams, getConfig } from "@/lib/sbpayment";
 
+export const dynamic = "force-dynamic";
+
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!

@@ -4,6 +4,8 @@ import { isWithinBookingRange } from '@/lib/types';
 import { sendQrEmail } from '@/lib/qr-mail';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 
+export const dynamic = 'force-dynamic';
+
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
