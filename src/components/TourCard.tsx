@@ -1,6 +1,7 @@
 'use client';
 
 import { TourUIRecord } from '@/lib/types';
+import { sanitizeRichText } from '@/lib/sanitize';
 
 interface TourCardProps {
   tour: TourUIRecord;
@@ -32,9 +33,10 @@ export default function TourCard({ tour }: TourCardProps) {
         </h3>
 
         {tour.description && (
-          <p className="text-sm text-gray-600 whitespace-pre-line mb-3 leading-relaxed">
-            {tour.description}
-          </p>
+          <div
+            className="text-sm text-gray-600 whitespace-pre-line mb-3 leading-relaxed"
+            dangerouslySetInnerHTML={{ __html: sanitizeRichText(tour.description) }}
+          />
         )}
 
         <div className="flex items-center gap-2 flex-wrap mb-2">
@@ -55,7 +57,10 @@ export default function TourCard({ tour }: TourCardProps) {
         {tour.notice_text && (
           <div className="mt-3 p-2 rounded bg-yellow-50 border border-yellow-200 text-xs text-yellow-800 flex gap-1 leading-snug">
             <span>⚠️</span>
-            <span className="whitespace-pre-line">{tour.notice_text}</span>
+            <span
+              className="whitespace-pre-line"
+              dangerouslySetInnerHTML={{ __html: sanitizeRichText(tour.notice_text) }}
+            />
           </div>
         )}
       </div>

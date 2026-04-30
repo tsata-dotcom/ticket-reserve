@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { sanitizeRichText } from '@/lib/sanitize';
 import { TourTypeRecord, TOUR_SLUG_META } from '@/lib/types';
 
 interface TourSelectorProps {
@@ -98,9 +99,10 @@ export default function TourSelector({ selectedSlug, onSelect }: TourSelectorPro
                 </h3>
 
                 {tour.description && (
-                  <p className="text-sm text-gray-600 whitespace-pre-line mb-3 leading-relaxed">
-                    {tour.description}
-                  </p>
+                  <div
+                    className="text-sm text-gray-600 whitespace-pre-line mb-3 leading-relaxed"
+                    dangerouslySetInnerHTML={{ __html: sanitizeRichText(tour.description) }}
+                  />
                 )}
 
                 <div className="flex items-center gap-2 flex-wrap mb-2">
@@ -121,7 +123,10 @@ export default function TourSelector({ selectedSlug, onSelect }: TourSelectorPro
                 {tour.notice_text && (
                   <div className="mt-3 p-2 rounded bg-yellow-50 border border-yellow-200 text-xs text-yellow-800 flex gap-1 leading-snug">
                     <span>⚠️</span>
-                    <span className="whitespace-pre-line">{tour.notice_text}</span>
+                    <span
+                      className="whitespace-pre-line"
+                      dangerouslySetInnerHTML={{ __html: sanitizeRichText(tour.notice_text) }}
+                    />
                   </div>
                 )}
               </div>
