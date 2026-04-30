@@ -1,6 +1,5 @@
 import { createHash } from "crypto";
 import { XMLParser } from "fast-xml-parser";
-import iconv from "iconv-lite";
 
 // SBペイメント（ソフトバンクペイメントサービス）連携ユーティリティ。
 // リンク型購入要求 (A01-1) のフォームパラメータ生成と、API型 (XML over HTTPS Basic) の
@@ -166,8 +165,8 @@ function buildOrderId(reservationId: string): string {
 // item_name は SBペイメントのリンク型では「Shift-JIS の日本語生文字列」として送信する仕様
 // （Base64 化はしない）。HTML レスポンスを Shift-JIS で返すため、ブラウザが form POST 時に
 // accept-charset="Shift_JIS" に従って自動的に Shift-JIS バイトでエンコードして送る。
-// 文字数制限は 40 文字。ハッシュ計算は実送信バイト（= Shift-JIS）と一致させる必要があるため、
-// 連結用バッファを組み立てる箇所で iconv.encode(..., "Shift_JIS") する（buildLinkFormParams 内）。
+// 文字数制限は 40 文字。ハッシュ計算自体は SBペイメント仕様により UTF-8 で行うので、
+// ここでは単純に40文字で切るだけで Shift-JIS エンコードは不要。
 function truncateItemName(name: string): string {
   return name.length > 40 ? name.substring(0, 40) : name;
 }
@@ -228,11 +227,11 @@ export function buildLinkFormParams(
 
 // ----- 結果CGI (A02-1) のハッシュ検証 -----
 //
-// SBペイメント公式仕様:
-//   「当社からの購入結果（画面返却）のチェックサムについては、
-//    文字コードをShift-JISで作成してチェックサム値を設定します。」
-//
-// つまり結果CGIのハッシュは Shift-JIS バイト連結 + SHA1（リクエスト側の UTF-8 とは違う）。
+// 実測確認 (2026-04-30): SBペイメントの結果CGI (pagecon_url 宛) のハッシュは
+// **UTF-8** 連結 + SHA1 で計算されている（リクエスト時と同じ方式）。
+// 公式ドキュメントには「画面返却のチェックサムは Shift-JIS」と記載があるが、
+// それは画面返却 (A03-1: success_url 等への戻りフォーム) 専用であり、結果CGI
+// (A02-1: pagecon_url への裏側通信) は UTF-8 で良い。
 // CALLBACK_HASH_FIELD_ORDER は購入要求の都度課金の結果CGI連結順序（A02-1）。
 // success_url / cancel_url / error_url / pagecon_url は結果CGIには含まれない点に注意。
 export const CALLBACK_HASH_FIELD_ORDER: ReadonlyArray<string> = [
@@ -280,41 +279,14 @@ export function verifyCallbackHashcode(
   hashKey: string,
   receivedHash: string
 ): boolean {
-  const received = receivedHash.toUpperCase();
-
-  // 方式1: UTF-8 連結 + SHA1（リクエスト側と同じ方式）
-  const utf8Concat =
+  // 各フィールドの値を順に連結 → 末尾にハッシュキー → UTF-8 で SHA1 → 大文字16進。
+  const concatenated =
     fieldOrder.map((f) => params[f] ?? "").join("") + hashKey;
-  const utf8Hash = createHash("sha1")
-    .update(utf8Concat, "utf-8")
+  const computed = createHash("sha1")
+    .update(concatenated, "utf-8")
     .digest("hex")
     .toUpperCase();
-
-  // 方式2: Shift-JIS バイト連結 + SHA1（公式仕様の結果CGI想定）
-  const sjisBuffers = fieldOrder.map((f) =>
-    iconv.encode(params[f] ?? "", "Shift_JIS")
-  );
-  sjisBuffers.push(Buffer.from(hashKey, "utf-8"));
-  const sjisHash = createHash("sha1")
-    .update(Buffer.concat(sjisBuffers))
-    .digest("hex")
-    .toUpperCase();
-
-  // TODO: 本番前にデバッグログを削除し、実際に一致した方式のみを残すこと。
-  // どちらの符号化で SBペイメントが SHA1 を取っているかをログで確定させる。
-  console.log(
-    "[hashcheck] UTF-8 hash:",
-    utf8Hash,
-    utf8Hash === received ? "✅ MATCH" : "❌"
-  );
-  console.log(
-    "[hashcheck] SJIS hash:",
-    sjisHash,
-    sjisHash === received ? "✅ MATCH" : "❌"
-  );
-  console.log("[hashcheck] received:", received);
-
-  return utf8Hash === received || sjisHash === received;
+  return computed === receivedHash.toUpperCase();
 }
 
 // 結果CGI (A02-1) のハッシュ検証（旧実装・非推奨）。
