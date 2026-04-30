@@ -291,9 +291,27 @@ export function verifyCallbackHashcode(
   buffers.push(Buffer.from(hashKey, "utf-8"));
   const computed = createHash("sha1")
     .update(Buffer.concat(buffers))
-    .digest("hex");
+    .digest("hex")
+    .toUpperCase();
+  const expected = receivedHash.toUpperCase();
+
+  // TODO: 本番前にデバッグログを削除（item_name や order_id 等が記録される）。
+  // ハッシュ不一致の解析用。各フィールドの値・computed/received・item_name の
+  // Shift-JIS バイト列(hex) を Vercel ログから確認できる。
+  console.log(
+    "[hashcheck] field values:",
+    fieldOrder.map((f) => `${f}=${params[f] ?? ""}`).join(" | ")
+  );
+  console.log("[hashcheck] computed:", computed);
+  console.log("[hashcheck] received:", expected);
+  console.log("[hashcheck] item_name raw:", params["item_name"]);
+  console.log(
+    "[hashcheck] item_name sjis hex:",
+    iconv.encode(params["item_name"] ?? "", "Shift_JIS").toString("hex")
+  );
+
   // SBペイメントのレスポンスハッシュは大文字16進。比較は大文字寄せで行う。
-  return computed.toUpperCase() === receivedHash.toUpperCase();
+  return computed === expected;
 }
 
 // 結果CGI (A02-1) のハッシュ検証（旧実装・非推奨）。
