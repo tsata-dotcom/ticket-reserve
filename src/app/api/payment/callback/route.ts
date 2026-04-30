@@ -59,6 +59,13 @@ export async function POST(request: NextRequest) {
   //   DB 更新はスキップしてリプレイ攻撃や偽のコールバックを防ぐ。
   // 試験環境などで検証が頻繁に失敗するケースに備え、SBPAYMENT_SKIP_HASH_VERIFY=true
   //   が設定されているときはハッシュ不一致でも処理を続行する（緊急バイパス）。
+  // TODO: 本番前に params 全体のログ出力を削除（sps_hashcode・order_id・金額等が含まれる）。
+  // SBペイメントが結果CGIで実際にどのフィールド/順序を送ってくるかを把握するための解析用ログ。
+  console.log(
+    "[payment/callback] received params:",
+    JSON.stringify(params)
+  );
+
   const receivedHash = params["sps_hashcode"] ?? "";
   const { hashKey } = getConfig();
   const { sps_hashcode: _omit, ...rest } = params;
