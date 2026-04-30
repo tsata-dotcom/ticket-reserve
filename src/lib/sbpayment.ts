@@ -249,13 +249,19 @@ export const CALLBACK_HASH_FIELD_ORDER: ReadonlyArray<string> = [
   "tax",
   "amount",
   "pay_type",
+  "auto_charge_type",
   "service_type",
+  "div_settele",
+  "last_charge_month",
+  "camp_type",
+  "tracking_id",
   "terminal_type",
   "free1",
   "free2",
   "free3",
-  "free_csv",
+  // free_csv は結果CGIには含まれないので連結対象から除外
   "request_date",
+  // ここから結果返却フィールド
   "res_pay_method",
   "res_result",
   "res_tracking_id",
@@ -286,7 +292,8 @@ export function verifyCallbackHashcode(
   const computed = createHash("sha1")
     .update(Buffer.concat(buffers))
     .digest("hex");
-  return computed.toLowerCase() === receivedHash.toLowerCase();
+  // SBペイメントのレスポンスハッシュは大文字16進。比較は大文字寄せで行う。
+  return computed.toUpperCase() === receivedHash.toUpperCase();
 }
 
 // 結果CGI (A02-1) のハッシュ検証（旧実装・非推奨）。
