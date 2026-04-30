@@ -70,22 +70,6 @@ export async function POST(request: NextRequest) {
       ticketCount: Number(ticketCount) || 1,
     });
 
-    // ----- デバッグ出力（SBペイメント連携トラブル時の解析用） -----
-    // SBPAYMENT_DEBUG=true の環境変数が設定されているときのみ出力する。
-    // hashInputString や全 params JSON には email ハッシュ等が含まれるので
-    // 本番では SBPAYMENT_DEBUG=false にすること。ハッシュ入力連結文字列も
-    // 機密情報になるため、ログには主要項目（order_id / amount / item_name /
-    // hashcode）のみに絞る。
-    if ((process.env.SBPAYMENT_DEBUG ?? "").toLowerCase() === "true") {
-      console.log("=== SBPayment Debug ===");
-      console.log("order_id:", formParams.order_id);
-      console.log("amount:", formParams.amount);
-      console.log("item_name (UTF-8 raw):", String(tourTypeName));
-      console.log("item_name (form value):", formParams.item_name);
-      console.log("Generated hashcode:", formParams.sps_hashcode);
-      console.log("=== /SBPayment Debug ===");
-    }
-
     const { error: updateError } = await supabase
       .from("reservations")
       .update({
