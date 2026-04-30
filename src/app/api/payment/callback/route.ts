@@ -25,6 +25,66 @@ function plainResponse(body: string, status = 200) {
   });
 }
 
+// パーセントエンコード文字列を生バイト列にデコードする。
+// 例: "%8Ak%82%DE%82%AB" → Buffer<8a 6b 82 de 82 ab>（Shift-JIS バイト列）
+// '+' は application/x-www-form-urlencoded の仕様により空白 (0x20) として扱う。
+function percentDecodeToBuffer(str: string): Buffer {
+  const bytes: number[] = [];
+  for (let i = 0; i < str.length; i++) {
+    const ch = str[i];
+    if (ch === "%" && i + 2 < str.length) {
+      const hi = str.charCodeAt(i + 1);
+      const lo = str.charCodeAt(i + 2);
+      const isHex = (c: number) =>
+        (c >= 0x30 && c <= 0x39) ||
+        (c >= 0x41 && c <= 0x46) ||
+        (c >= 0x61 && c <= 0x66);
+      if (isHex(hi) && isHex(lo)) {
+        bytes.push(parseInt(str.substring(i + 1, i + 3), 16));
+        i += 2;
+        continue;
+      }
+    }
+    if (ch === "+") {
+      bytes.push(0x20);
+    } else {
+      bytes.push(str.charCodeAt(i) & 0xff);
+    }
+  }
+  return Buffer.from(bytes);
+}
+
+// SBペイメントの結果CGI body は Shift-JIS バイト列を URL エンコードした形式
+// （例: "item_name=%8Ak%82%DE%82%AB..."）。
+// 通常の request.text() は body を UTF-8 として解釈するため日本語が文字化けし、
+// その文字化け文字列を iconv.encode で Shift-JIS に戻しても元のバイト列とは
+// 一致しない（= ハッシュ検証が通らない）。
+// 正しい手順:
+//   1. body をバイト列で読み出す (arrayBuffer)
+//   2. ASCII として split（パーセントエンコード自体はASCII範囲なので安全）
+//   3. 各値を percentDecodeToBuffer で Shift-JIS バイト列に戻す
+//   4. iconv.decode(..., "Shift_JIS") で UTF-8 文字列化
+//   5. verifyCallbackHashcode は内部で iconv.encode(value, "Shift_JIS") するので
+//      元の Shift-JIS バイト列と一致する → ハッシュ検証OK
+function parseSjisFormBody(buffer: Buffer): Record<string, string> {
+  const out: Record<string, string> = {};
+  const bodyAscii = buffer.toString("ascii");
+  if (!bodyAscii) return out;
+  for (const pair of bodyAscii.split("&")) {
+    if (!pair) continue;
+    const eq = pair.indexOf("=");
+    const rawKey = eq >= 0 ? pair.substring(0, eq) : pair;
+    const rawValue = eq >= 0 ? pair.substring(eq + 1) : "";
+    const keyBuf = percentDecodeToBuffer(rawKey);
+    const valBuf = percentDecodeToBuffer(rawValue);
+    // key 側は実運用上ほぼ ASCII だが念のため Shift-JIS デコードで統一する
+    const key = iconv.decode(keyBuf, "Shift_JIS");
+    const value = iconv.decode(valBuf, "Shift_JIS");
+    out[key] = value;
+  }
+  return out;
+}
+
 // "kf_<32文字のUUIDハイフン除去>" 形式から元のUUIDに戻す。
 function decodeOrderId(orderId: string): string | null {
   if (!orderId.startsWith("kf_")) return null;
@@ -40,14 +100,10 @@ function decodeOrderId(orderId: string): string | null {
 }
 
 export async function POST(request: NextRequest) {
-  const params: Record<string, string> = {};
+  let params: Record<string, string> = {};
   try {
-    const buffer = await request.arrayBuffer();
-    const decoded = iconv.decode(Buffer.from(buffer), "Shift_JIS");
-    const usp = new URLSearchParams(decoded);
-    usp.forEach((value, key) => {
-      params[key] = value;
-    });
+    const arrayBuffer = await request.arrayBuffer();
+    params = parseSjisFormBody(Buffer.from(arrayBuffer));
   } catch (e) {
     console.error("[payment/callback] body parse error:", e);
     return plainResponse("NG,bad_request");
