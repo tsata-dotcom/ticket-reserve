@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { isWithinBookingRange } from '@/lib/types';
 import { sendQrEmail } from '@/lib/qr-mail';
+import { supabaseAdmin } from '@/lib/supabase-admin';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -111,8 +112,11 @@ export async function POST(request: NextRequest) {
     let profile = existingProfile;
 
     if (!profile) {
+      // 初回予約時にプロフィールが未作成のケース。anon key の upsert は RLS (42501)
+      // で弾かれるので supabaseAdmin (service_role) で書き込む。id は認証ユーザー
+      // 自身に固定するため他人のレコードを上書きする心配はない。
       const meta = user.user_metadata;
-      const { data: newProfile, error: profileError } = await supabase
+      const { data: newProfile, error: profileError } = await supabaseAdmin
         .from('customer_profiles')
         .upsert({
           id: user.id,

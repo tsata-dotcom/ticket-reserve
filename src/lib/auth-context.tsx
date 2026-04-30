@@ -68,27 +68,61 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const upsertProfile = async (userId: string, name: string, email: string, phone: string): Promise<{ error: string | null }> => {
+  // customer_profiles への書き込みは RLS により anon key からは弾かれるため、
+  // 全て /api/customer-profile/upsert（service_role）経由で行う。
+  // userId 引数は受けるが、サーバー側で認証ユーザー自身に上書きされる。
+  const upsertProfile = async (
+    _userId: string,
+    name: string,
+    email: string,
+    phone: string
+  ): Promise<{ error: string | null }> => {
     try {
-      const { data, error } = await withTimeout(
-        supabase
-          .from('customer_profiles')
-          .upsert({ id: userId, display_name: name, email, phone }, { onConflict: 'id' })
-          .select()
-          .single(),
-        5000,
-        TIMEOUT_FALLBACK as any
-      );
-
-      if (error) {
-        console.error('upsertProfile error:', error);
-        return { error: error.message };
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        return { error: 'セッションが切れました。再度ログインしてください。' };
       }
-      if (data) setProfile(data);
+      const res = await fetch('/api/customer-profile/upsert', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ display_name: name, email, phone }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        console.error('upsertProfile error:', data);
+        return { error: data?.error || 'プロフィールの作成に失敗しました' };
+      }
+      if (data?.profile) setProfile(data.profile);
       return { error: null };
     } catch (e) {
       console.error('upsertProfile unexpected error:', e);
       return { error: e instanceof Error ? e.message : 'プロフィールの作成に失敗しました' };
+    }
+  };
+
+  // Futureshop 連携時の customer_profiles 部分更新も同 API 経由で行う。
+  const updateProfileViaApi = async (
+    accessToken: string,
+    fields: { display_name?: string; phone?: string; futureshop_member_id?: string }
+  ): Promise<void> => {
+    try {
+      const res = await fetch('/api/customer-profile/upsert', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify(fields),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        console.error('[customer-profile] update via api failed:', data);
+      }
+    } catch (e) {
+      console.error('[customer-profile] update via api error:', e);
     }
   };
 
@@ -126,14 +160,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const { data: { user: currentUser } } = await supabase.auth.getUser(session.access_token);
         if (currentUser) {
           const fullName = `${member.lastName} ${member.firstName}`.trim();
-          await supabase
-            .from('customer_profiles')
-            .update({
-              futureshop_member_id: member.memberId,
-              ...(fullName ? { display_name: fullName } : {}),
-            })
-            .eq('id', currentUser.id);
-
+          await updateProfileViaApi(session.access_token, {
+            futureshop_member_id: member.memberId,
+            ...(fullName ? { display_name: fullName } : {}),
+          });
           await fetchProfile(currentUser.id);
         }
         return;
@@ -152,15 +182,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const { data: { user: currentUser } } = await supabase.auth.getUser(session.access_token);
         if (currentUser) {
           const fullName = `${member.lastName} ${member.firstName}`.trim();
-          await supabase
-            .from('customer_profiles')
-            .update({
-              futureshop_member_id: member.memberId,
-              ...(fullName ? { display_name: fullName } : {}),
-              ...(member.telNoMain ? { phone: member.telNoMain } : {}),
-            })
-            .eq('id', currentUser.id);
-
+          await updateProfileViaApi(session.access_token, {
+            futureshop_member_id: member.memberId,
+            ...(fullName ? { display_name: fullName } : {}),
+            ...(member.telNoMain ? { phone: member.telNoMain } : {}),
+          });
           await fetchProfile(currentUser.id);
         }
       } else {
