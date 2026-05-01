@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { toDisplayName } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
 
@@ -81,9 +82,14 @@ export async function GET(request: NextRequest) {
 
   // time_slot_settings の tour_type 列も slug / name の両方で拾う。
   // ticket-system は name で書き込むが、過去データや別経路で slug が入っている
-  // ケースもあるため。tourName が解決できなくても slug でヒットするチャンスを残す。
+  // ケースもあるため。tour_types レコードが無い／name 未設定でも、
+  // toDisplayName() の固定マップで日本語名を補完してヒットを担保する。
   const settingsTourTypeKeys = Array.from(
-    new Set([tourSlug, ...(tourName ? [tourName] : [])])
+    new Set([
+      tourSlug,
+      toDisplayName(tourSlug),
+      ...(tourName ? [tourName] : []),
+    ])
   );
 
   const { data: settings, error: settingsErr } = await supabase
