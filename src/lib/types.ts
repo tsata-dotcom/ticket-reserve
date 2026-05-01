@@ -28,6 +28,18 @@ export const TOUR_SLUG_META: Record<string, { icon: string; color: string; color
 
 const DEFAULT_META = { icon: '🎁', color: '#1a6985', colorLight: '#e8f4f8' };
 
+// tour_type が slug（karamuki-tour 等）で渡された場合に日本語表示名へ変換するフォールバック。
+// 通常は呼び出し元で tour_types.name を解決済みだが、未解決のスラッグが流れ込んだ場合に
+// 日本語の件名/本文に落とすためのセーフティネット。
+const TOUR_DISPLAY_NAME_MAP: Record<string, string> = {
+  'karamuki-tour': '殻むき体験ツアー',
+  'my-hp': 'My HPづくり',
+};
+
+export function toDisplayName(tourType: string): string {
+  return TOUR_DISPLAY_NAME_MAP[tourType] || tourType;
+}
+
 export interface TourUIRecord extends TourTypeRecord {
   icon: string;
   color: string;

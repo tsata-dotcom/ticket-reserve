@@ -1,11 +1,78 @@
 import QRCode from 'qrcode';
 import { sendMail } from './mailer';
+import { supabaseAdmin } from './supabase-admin';
+import { toDisplayName } from './types';
 
 export type CancelPolicySnapshot = {
   '2days'?: number;
   '1day'?: number;
   today?: number;
 };
+
+export interface QrEmailParams {
+  to: string;
+  displayName: string;
+  orderNo: string;
+  tourType: string;
+  visitDate: string;
+  timeSlot: string;
+  ticketCount: number;
+  totalAmount: number;
+  // Phase 2 (SBペイメント) で追加。未指定の旧ルート（無料コース予約）からの呼び出しでも
+  // メールが壊れないように optional + デフォルト値で運用する。
+  isFirstVisitFree?: boolean;
+  cancelPolicy?: CancelPolicySnapshot | null;
+}
+
+const DEFAULT_SUBJECT_TEMPLATE =
+  '【かにファクトリー】{tourType} {visitDate}のご予約確定※チェックインQRコード付き';
+
+function formatDateJP(dateStr: string): string {
+  const d = new Date(dateStr + 'T00:00:00');
+  if (Number.isNaN(d.getTime())) return dateStr;
+  return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
+}
+
+function replaceSubjectPlaceholders(template: string, params: QrEmailParams): string {
+  const tourTypeJP = toDisplayName(params.tourType || '');
+  const visitDateJP = formatDateJP(params.visitDate || '');
+  const timeSlotLabel =
+    params.timeSlot === 'AM'
+      ? '午前の部'
+      : params.timeSlot === 'PM'
+        ? '午後の部'
+        : params.timeSlot || '';
+  return template
+    .replace(/{tourType}/g, tourTypeJP)
+    .replace(/{visitDate}/g, visitDateJP)
+    .replace(/{timeSlot}/g, timeSlotLabel)
+    .replace(/{ticketCount}/g, String(params.ticketCount || ''))
+    .replace(/{orderNo}/g, params.orderNo || '')
+    .replace(/{displayName}/g, params.displayName || '')
+    .replace(
+      /{totalAmount}/g,
+      params.totalAmount ? `¥${params.totalAmount.toLocaleString()}` : ''
+    );
+}
+
+async function fetchSubjectTemplate(): Promise<string> {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('payment_messages')
+      .select('message_text')
+      .eq('message_key', 'email_subject_reservation')
+      .maybeSingle();
+    if (error) {
+      console.error('[qr-mail] subject template fetch error:', error);
+      return DEFAULT_SUBJECT_TEMPLATE;
+    }
+    const text = (data as { message_text?: string } | null)?.message_text;
+    return text && text.trim() !== '' ? text : DEFAULT_SUBJECT_TEMPLATE;
+  } catch (e) {
+    console.error('[qr-mail] subject template fetch threw:', e);
+    return DEFAULT_SUBJECT_TEMPLATE;
+  }
+}
 
 function escapeHtml(value: string): string {
   return value
@@ -58,20 +125,7 @@ function renderCancelPolicySection(policy: CancelPolicySnapshot | null): string 
   `;
 }
 
-export async function sendQrEmail(params: {
-  to: string;
-  displayName: string;
-  orderNo: string;
-  tourType: string;
-  visitDate: string;
-  timeSlot: string;
-  ticketCount: number;
-  totalAmount: number;
-  // Phase 2 (SBペイメント) で追加。未指定の旧ルート（無料コース予約）からの呼び出しでも
-  // メールが壊れないように optional + デフォルト値で運用する。
-  isFirstVisitFree?: boolean;
-  cancelPolicy?: CancelPolicySnapshot | null;
-}) {
+export async function sendQrEmail(params: QrEmailParams) {
   const qrDataUrl = await QRCode.toDataURL(params.orderNo, { width: 200, margin: 2 });
   const qrBase64 = qrDataUrl.replace(/^data:image\/png;base64,/, '');
 
@@ -106,9 +160,12 @@ export async function sendQrEmail(params: {
     </div>
   `;
 
+  const subjectTemplate = await fetchSubjectTemplate();
+  const subject = replaceSubjectPlaceholders(subjectTemplate, params);
+
   return sendMail({
     to: params.to,
-    subject: '【かにファクトリー】体験予約のご案内',
+    subject,
     html: emailHtml,
     attachments: [
       {
