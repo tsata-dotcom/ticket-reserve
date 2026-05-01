@@ -112,6 +112,11 @@ export async function GET(request: NextRequest) {
     .gte('date', startDate)
     .lte('date', endDate);
 
+  // TODO: 休業日が反映されない問題の切り分け用。原因特定後に削除する。
+  console.log('[availability] holidays query:', { startDate, endDate });
+  console.log('[availability] holidayRows:', JSON.stringify(holidayRows));
+  console.log('[availability] holidaysErr:', holidaysErr);
+
   if (holidaysErr) {
     console.error('[availability] holidays fetch error:', holidaysErr);
   }
