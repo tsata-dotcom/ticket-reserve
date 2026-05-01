@@ -7,6 +7,7 @@ import {
   CALLBACK_HASH_FIELD_ORDER,
 } from "@/lib/sbpayment";
 import { sendQrEmail } from "@/lib/qr-mail";
+import { toDisplayName } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -190,7 +191,10 @@ export async function POST(request: NextRequest) {
         .from("reservations")
         .select("id")
         .eq("buyer_email", reservation.buyer_email)
-        .eq("tour_type", reservation.tour_type)
+        .in("tour_type", Array.from(new Set([
+          reservation.tour_type,
+          toDisplayName(reservation.tour_type),
+        ])))
         .in("payment_status", [
           "authorized",
           "captured",

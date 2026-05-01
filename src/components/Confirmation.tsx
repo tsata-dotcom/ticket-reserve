@@ -88,7 +88,7 @@ export default function Confirmation({ tour, selectedDate, timeSlot, ticketCount
           .from('reservations')
           .select('id')
           .eq('buyer_email', email)
-          .eq('tour_type', tour.slug)
+          .in('tour_type', [tour.slug, tour.name].filter(Boolean))
           .in('payment_status', ['authorized', 'captured', 'cancel_charged', 'auth_cancelled'])
           .limit(1);
 
