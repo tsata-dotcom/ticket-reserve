@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { supabaseAdmin } from '@/lib/supabase-admin';
 import { toDisplayName } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
@@ -106,16 +107,14 @@ export async function GET(request: NextRequest) {
   // 休業日: ticket-system 側で /slot-management の「休業日管理」から登録される。
   // 該当日は AM/PM とも remaining=0 / status='closed' で返す（time_slot_settings に
   // 行が無くても holidays に入っていれば閉鎖扱い）。
-  const { data: holidayRows, error: holidaysErr } = await supabase
+  // holidays は anon に SELECT ポリシーが無く、anon クライアントだと
+  // 静かに空配列が返って休業日が反映されない。RLS をバイパスするため
+  // service_role の supabaseAdmin で読む（公開情報なので問題なし）。
+  const { data: holidayRows, error: holidaysErr } = await supabaseAdmin
     .from('holidays')
     .select('date')
     .gte('date', startDate)
     .lte('date', endDate);
-
-  // TODO: 休業日が反映されない問題の切り分け用。原因特定後に削除する。
-  console.log('[availability] holidays query:', { startDate, endDate });
-  console.log('[availability] holidayRows:', JSON.stringify(holidayRows));
-  console.log('[availability] holidaysErr:', holidaysErr);
 
   if (holidaysErr) {
     console.error('[availability] holidays fetch error:', holidaysErr);
