@@ -104,7 +104,7 @@ export default function Confirmation({ tour, selectedDate, timeSlot, ticketCount
       }
     };
     checkFirstTime();
-  }, [user, profile, tour.slug]);
+  }, [user, profile, tour.slug, tour.name]);
 
   useEffect(() => {
     const fetchAux = async () => {
