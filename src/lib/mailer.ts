@@ -60,6 +60,7 @@ async function sendViaResend(
           filename: a.filename,
           content: a.content,
           content_type: a.content_type,
+          ...(a.cid ? { content_id: `<${a.cid}>` } : {}),
         })) || [],
     }),
   });
