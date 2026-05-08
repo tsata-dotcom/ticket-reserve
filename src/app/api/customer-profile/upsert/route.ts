@@ -3,6 +3,8 @@ import { createClient } from "@supabase/supabase-js";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 
 export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
+export const revalidate = 0;
 
 // 新規会員登録直後・Futureshop 連携時などに customer_profiles を upsert するための
 // エンドポイント。クライアントから直接 .upsert() すると anon key で発行され
