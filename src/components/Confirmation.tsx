@@ -71,31 +71,37 @@ export default function Confirmation({ tour, selectedDate, timeSlot, ticketCount
 
     const checkFirstTime = async () => {
       try {
-        // has_first_visit_free 適用判定:
-        //   同一email × 同一tour_type で payment_status が
-        //   authorized / captured / cancel_charged / auth_cancelled のいずれかの
-        //   予約があれば2回目以降。
-        //   - authorized: 未チェックインだがオーソリ済み（多重初回適用を防ぐ）
-        //   - captured: チェックイン済みで売上確定
-        //   - cancel_charged: キャンセル料請求済み
-        //   - auth_cancelled: 初回無料でチェックイン済み = 無料特典を使い切った
+        // has_first_visit_free 適用判定はサーバー側 (/api/check-first-visit) に委譲。
+        // anon key で reservations を直接 SELECT すると他人の予約が露出する懸念があるため、
+        // service_role + 認証済みユーザートークン経由で問い合わせる。
         const email = (profile?.email || user.email || '').trim().toLowerCase();
         if (!email) {
           setIsFirstTime(true);
           return;
         }
-        const { data, error: fetchError } = await supabase
-          .from('reservations')
-          .select('id')
-          .eq('buyer_email', email)
-          .in('tour_type', [tour.slug, tour.name].filter(Boolean))
-          .in('payment_status', ['authorized', 'captured', 'cancel_charged', 'auth_cancelled'])
-          .limit(1);
 
-        if (fetchError) {
-          console.error('checkFirstTime error:', fetchError);
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+          setIsFirstTime(true);
+          return;
         }
-        setIsFirstTime(!data || data.length === 0);
+
+        const params = new URLSearchParams({
+          email,
+          tour_type: tour.slug,
+        });
+        const res = await fetch(`/api/check-first-visit?${params.toString()}`, {
+          headers: { 'Authorization': `Bearer ${session.access_token}` },
+        });
+
+        if (!res.ok) {
+          console.error('checkFirstTime API error:', res.status);
+          setIsFirstTime(true);
+          return;
+        }
+
+        const { isFirstVisit } = await res.json();
+        setIsFirstTime(isFirstVisit !== false);
       } catch (e) {
         console.error('checkFirstTime unexpected error:', e);
         setIsFirstTime(true);
