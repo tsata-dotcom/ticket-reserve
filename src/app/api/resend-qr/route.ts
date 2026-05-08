@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { sendQrEmail } from '@/lib/qr-mail';
+import { supabaseAdmin } from '@/lib/supabase-admin';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,7 +30,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 予約を取得（本人確認）
-    const { data: reservation, error: fetchError } = await supabase
+    const { data: reservation, error: fetchError } = await supabaseAdmin
       .from('reservations')
       .select('*')
       .eq('id', reservation_id)
@@ -76,7 +77,7 @@ export async function POST(request: NextRequest) {
     console.log('QR resend result:', emailResult);
 
     // qr_sent を更新
-    await supabase
+    await supabaseAdmin
       .from('reservations')
       .update({ qr_sent: true, qr_sent_at: new Date().toISOString() })
       .eq('id', reservation_id);

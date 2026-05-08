@@ -15,7 +15,7 @@ async function generateOrderNo(visitDate: string): Promise<string> {
   const dateStr = visitDate.replace(/-/g, '');
   const prefix = `WEB-${dateStr}-`;
 
-  const { data } = await supabase
+  const { data } = await supabaseAdmin
     .from('reservations')
     .select('order_no')
     .like('order_no', `${prefix}%`)

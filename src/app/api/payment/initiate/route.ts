@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import iconv from "iconv-lite";
 import { buildLinkFormParams, getConfig } from "@/lib/sbpayment";
+import { supabaseAdmin } from "@/lib/supabase-admin";
 
 export const dynamic = "force-dynamic";
 
@@ -70,7 +71,7 @@ export async function POST(request: NextRequest) {
       ticketCount: Number(ticketCount) || 1,
     });
 
-    const { error: updateError } = await supabase
+    const { error: updateError } = await supabaseAdmin
       .from("reservations")
       .update({
         payment_status: "pending",

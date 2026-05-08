@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { calculateCancelFee, CancelPolicySnapshot } from "@/lib/cancel-policy";
 import { capturePayment, voidAuthorization } from "@/lib/sbpayment";
+import { supabaseAdmin } from "@/lib/supabase-admin";
 
 export const dynamic = "force-dynamic";
 
@@ -28,7 +29,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "予約IDが必要です" }, { status: 400 });
   }
 
-  const { data: reservation } = await supabase
+  const { data: reservation } = await supabaseAdmin
     .from("reservations")
     .select(
       "id, customer_id, status, payment_status, total_amount, authorized_amount, sps_tracking_id, visit_date, cancel_policy_snapshot"
@@ -103,7 +104,7 @@ export async function POST(request: NextRequest) {
     capturedAmount = freeCancel ? 0 : fee;
   }
 
-  const { error: updateError } = await supabase
+  const { error: updateError } = await supabaseAdmin
     .from("reservations")
     .update({
       status: "cancelled",
@@ -145,7 +146,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "予約IDが必要です" }, { status: 400 });
   }
 
-  const { data: reservation } = await supabase
+  const { data: reservation } = await supabaseAdmin
     .from("reservations")
     .select(
       "id, customer_id, total_amount, authorized_amount, visit_date, cancel_policy_snapshot"

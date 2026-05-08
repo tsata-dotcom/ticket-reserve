@@ -69,7 +69,7 @@ export async function GET(request: NextRequest) {
   //   - payment_failed: 決済失敗。実体は予約成立していない。
   //   - expired:        /api/payment/cleanup で時間切れにした pending_payment。
   // 残る reserved / checked_in / confirmed 等は引き続き枠消費としてカウントする。
-  const { data: reservations, error: resErr } = await supabase
+  const { data: reservations, error: resErr } = await supabaseAdmin
     .from('reservations')
     .select('visit_date, time_slot, ticket_count')
     .in('tour_type', tourTypeValues)

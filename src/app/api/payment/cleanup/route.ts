@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { supabaseAdmin } from "@/lib/supabase-admin";
 
 export const dynamic = "force-dynamic";
 
@@ -32,7 +33,7 @@ export async function POST(request: NextRequest) {
 
   const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
 
-  const { data, error } = await supabase
+  const { data, error } = await supabaseAdmin
     .from("reservations")
     .update({ status: "expired", payment_status: "expired" })
     .eq("status", "pending_payment")

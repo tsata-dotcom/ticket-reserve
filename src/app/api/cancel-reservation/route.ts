@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { supabaseAdmin } from '@/lib/supabase-admin';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,7 +30,7 @@ export async function POST(request: NextRequest) {
   }
 
   // Verify the reservation belongs to the user and is in the future
-  const { data: reservation } = await supabase
+  const { data: reservation } = await supabaseAdmin
     .from('reservations')
     .select('*')
     .eq('id', reservation_id)
@@ -46,7 +47,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: '過去の予約はキャンセルできません' }, { status: 400 });
   }
 
-  const { error: updateError } = await supabase
+  const { error: updateError } = await supabaseAdmin
     .from('reservations')
     .update({ status: 'cancelled' })
     .eq('id', reservation_id);
