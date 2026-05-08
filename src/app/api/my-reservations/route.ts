@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { supabaseAdmin } from '@/lib/supabase-admin';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,7 +27,7 @@ export async function GET(request: NextRequest) {
   // - payment_failed: 決済失敗。お客様には予約成立として見せない方が混乱が少ない。
   // - expired: 決済画面で離脱した古い pending_payment を /api/payment/cleanup で expired に落としたもの。
   // 管理画面 (ticket-system) 側は別途すべてのステータスを表示する。
-  const { data: reservations, error } = await supabase
+  const { data: reservations, error } = await supabaseAdmin
     .from('reservations')
     .select('*')
     .eq('customer_id', user.id)
