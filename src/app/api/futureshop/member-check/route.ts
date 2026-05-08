@@ -1,15 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { supabaseAdmin } from '@/lib/supabase-admin';
 import { fetchMembersWithFallback, verifyMemberExistsById, appendJstTimezone } from '@/lib/futureshop-api';
 
 export const dynamic = 'force-dynamic';
 export const fetchCache = 'force-no-store';
 export const revalidate = 0;
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
 
 export async function POST(req: NextRequest) {
   try {
@@ -22,7 +17,7 @@ export async function POST(req: NextRequest) {
     console.log(`[member-check] Input: "${email}" -> normalized: "${normalizedEmail}"`);
 
     // Step 1: Supabaseキャッシュ検索
-    const { data: cached, error: cacheErr } = await supabase
+    const { data: cached, error: cacheErr } = await supabaseAdmin
       .from('futureshop_members')
       .select('member_id, last_name, first_name, email')
       .eq('email', normalizedEmail)
@@ -64,7 +59,7 @@ export async function POST(req: NextRequest) {
       }
 
       console.log('[member-check] API verification: member deleted, removing from cache');
-      const { error: deleteErr } = await supabase
+      const { error: deleteErr } = await supabaseAdmin
         .from('futureshop_members')
         .delete()
         .eq('member_id', cached.member_id);
@@ -75,7 +70,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Step 2: APIフォールバック
-    const { data: syncStatus, error: syncErr } = await supabase
+    const { data: syncStatus, error: syncErr } = await supabaseAdmin
       .from('sync_status')
       .select('last_synced_at')
       .eq('sync_key', 'futureshop_members')
@@ -114,7 +109,7 @@ export async function POST(req: NextRequest) {
       // dateRegistered は JST 文字列だがタイムゾーン情報なしのため、TIMESTAMPTZ への
       // 保存時に UTC 解釈で +9h ずれる。"+09:00" を付与して JST として記録する。
       // 注意: ticket-system 側の /api/sync/futureshop でも同じ対応が必要。
-      const { error: insertErr } = await supabase.from('futureshop_members').insert({
+      const { error: insertErr } = await supabaseAdmin.from('futureshop_members').insert({
         member_id: m.memberId,
         email: normalizedEmail,
         last_name: m.lastName,
