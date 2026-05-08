@@ -34,6 +34,9 @@ export async function GET(request: NextRequest) {
     .not('status', 'in', '("pending_payment","payment_failed","expired")')
     .order('visit_date', { ascending: false });
 
+  console.log('[my-reservations] query result count:', reservations?.length, 'error:', error);
+  console.log('[my-reservations] user.id:', user.id);
+
   if (error) {
     return NextResponse.json(
       { error: 'データの取得に失敗しました' },
