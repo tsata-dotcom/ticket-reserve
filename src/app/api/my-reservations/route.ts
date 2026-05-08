@@ -35,8 +35,27 @@ export async function GET(request: NextRequest) {
     .order('visit_date', { ascending: false });
 
   if (error) {
-    return NextResponse.json({ error: 'データの取得に失敗しました' }, { status: 500 });
+    return NextResponse.json(
+      { error: 'データの取得に失敗しました' },
+      {
+        status: 500,
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate',
+          'CDN-Cache-Control': 'no-store',
+          'Vercel-CDN-Cache-Control': 'no-store',
+        },
+      }
+    );
   }
 
-  return NextResponse.json({ reservations });
+  return NextResponse.json(
+    { reservations },
+    {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate',
+        'CDN-Cache-Control': 'no-store',
+        'Vercel-CDN-Cache-Control': 'no-store',
+      },
+    }
+  );
 }
