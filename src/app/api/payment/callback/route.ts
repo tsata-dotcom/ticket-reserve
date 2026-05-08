@@ -8,6 +8,7 @@ import {
 } from "@/lib/sbpayment";
 import { sendQrEmail } from "@/lib/qr-mail";
 import { toDisplayName } from "@/lib/types";
+import { supabaseAdmin } from "@/lib/supabase-admin";
 
 export const dynamic = "force-dynamic";
 
@@ -162,7 +163,7 @@ export async function POST(request: NextRequest) {
 
   // 当該予約を読み出して、初回判定 / QRメール送信に必要な情報を取得。
   // cancel_policy_snapshot はQRメールに記載するキャンセルポリシー表のソース。
-  const { data: reservation, error: fetchError } = await supabase
+  const { data: reservation, error: fetchError } = await supabaseAdmin
     .from("reservations")
     .select(
       "id, order_no, buyer_email, buyer_name, tour_type, visit_date, time_slot, ticket_count, total_amount, qr_sent, cancel_policy_snapshot"
@@ -187,7 +188,7 @@ export async function POST(request: NextRequest) {
     // - auth_cancelled: 初回無料でチェックイン済み = 無料特典を使い切った
     let isFirstVisit = true;
     if (reservation.buyer_email && reservation.tour_type) {
-      const { data: prior, error: priorErr } = await supabase
+      const { data: prior, error: priorErr } = await supabaseAdmin
         .from("reservations")
         .select("id")
         .eq("buyer_email", reservation.buyer_email)
@@ -212,7 +213,7 @@ export async function POST(request: NextRequest) {
     }
 
     // オーソリ成功 → status を 'reserved' に昇格させてマイページで「予約済」として表示できるようにする。
-    const { error: updateError } = await supabase
+    const { error: updateError } = await supabaseAdmin
       .from("reservations")
       .update({
         sps_tracking_id: resTrackingId || null,
@@ -262,7 +263,7 @@ export async function POST(request: NextRequest) {
           cancelPolicy: reservation.cancel_policy_snapshot ?? null,
         });
 
-        await supabase
+        await supabaseAdmin
           .from("reservations")
           .update({ qr_sent: true, qr_sent_at: new Date().toISOString() })
           .eq("id", reservationId);
@@ -277,7 +278,7 @@ export async function POST(request: NextRequest) {
   // res_result が NG: failed としてマーク + status='payment_failed' に変更
   // （マイページの予約一覧から除外され、お客様には決済失敗が分かるようにする）。
   // レスポンス自体は SBペイメントの仕様上 OK を返す。
-  const { error: failError } = await supabase
+  const { error: failError } = await supabaseAdmin
     .from("reservations")
     .update({ payment_status: "failed", status: "payment_failed" })
     .eq("id", reservationId);
