@@ -193,7 +193,7 @@ export async function POST(request: NextRequest) {
       authorized_amount: requiresPayment ? total_amount : 0,
     };
 
-    const { data: reservation, error: insertError } = await supabase
+    const { data: reservation, error: insertError } = await supabaseAdmin
       .from('reservations')
       .insert(insertPayload)
       .select()
@@ -226,7 +226,7 @@ export async function POST(request: NextRequest) {
 
         console.log('Email send result:', emailResult);
 
-        const { error: updateError } = await supabase
+        const { error: updateError } = await supabaseAdmin
           .from('reservations')
           .update({ qr_sent: true, qr_sent_at: new Date().toISOString() })
           .eq('id', reservation.id);
