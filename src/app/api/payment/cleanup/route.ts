@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 
 export const dynamic = "force-dynamic";
@@ -12,11 +11,6 @@ export const dynamic = "force-dynamic";
 // Vercel Cron や外部スケジューラから定期的に POST する想定。
 // Authorization: Bearer {PAYMENT_CLEANUP_SECRET} が必須。
 // シークレット未設定 / 不一致は 401 を返す（誰でも叩けるエンドポイントにしない）。
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
 
 export async function POST(request: NextRequest) {
   const expectedSecret = process.env.PAYMENT_CLEANUP_SECRET;

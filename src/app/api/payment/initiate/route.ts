@@ -1,15 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 import iconv from "iconv-lite";
 import { buildLinkFormParams, getConfig } from "@/lib/sbpayment";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 
 export const dynamic = "force-dynamic";
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
 
 function escapeHtml(value: string): string {
   return value
