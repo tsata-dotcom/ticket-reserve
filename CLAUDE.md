@@ -88,3 +88,30 @@
 
 ## RPC 関数
 - `search_reservations_by_phone(phone_digits text)`: 電話番号のハイフンを除去して LIKE 検索（ticket-system のチェックイン画面から使用）
+
+## セキュリティ・BCP対策（2026年5月9日追記）
+
+### RLS・認証ルール
+- reservations テーブルへのアクセスは全て supabaseAdmin（service_role key）経由。anon key での直接アクセスは禁止（RLSで遮断済み）
+- staff_profiles / futureshop_members / sync_status も同様にanon アクセス遮断済み
+- customer_profiles への書き込みは API ルート経由（supabaseAdmin）。直接 INSERT 禁止
+- 公開テーブル（tour_types / payment_messages / site_content / holidays / time_slot_settings / slot_templates）は anon SELECT のみ許可
+
+### Next.js fetchキャッシュ対策
+- 全 API ルートに以下の3行を必ず設定すること（Next.js 14 の fetch 自動キャッシュ問題の対策）:
+export const dynamic = 'force-dynamic';
+export const fetchCache = 'force-no-store';
+export const revalidate = 0;
+- 新規 API ルート作成時も必ずこの3行を含めること
+
+### メール送信
+- メール送信は src/lib/mailer.ts の sendMail() 経由
+- 環境変数 MAIL_PROVIDER で送信経路を切り替え:
+  - 未設定 or 'sakura' → さくらPHPプロキシ経由（通常運用）
+  - 'resend' → Resend API 経由（フォールバック用）
+- Resend のドメイン認証（DKIM）は完了済み
+- RESEND_API_KEY は Vercel 環境変数に設定済み
+
+### 初回無料判定
+- クライアント側（Confirmation.tsx）からの直接 reservations アクセスは廃止
+- /api/check-first-visit API ルート経由で supabaseAdmin を使用
