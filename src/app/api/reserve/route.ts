@@ -103,7 +103,7 @@ export async function POST(request: NextRequest) {
     const finalPaymentMethod = requiresPayment ? 'card' : 'free';
 
     // Get / create customer profile
-    const { data: existingProfile, error: profileFetchError } = await supabase
+    const { data: existingProfile, error: profileFetchError } = await supabaseAdmin
       .from('customer_profiles')
       .select('*')
       .eq('id', user.id)
@@ -124,7 +124,7 @@ export async function POST(request: NextRequest) {
         .from('customer_profiles')
         .upsert({
           id: user.id,
-          display_name: meta?.display_name || user.email || '',
+          display_name: meta?.display_name || '',
           email: user.email || '',
           phone: meta?.phone || '',
         }, { onConflict: 'id' })
@@ -134,7 +134,7 @@ export async function POST(request: NextRequest) {
       if (profileError || !newProfile) {
         console.error('プロフィール自動作成エラー:', profileError);
         profile = {
-          display_name: meta?.display_name || user.email || '',
+          display_name: meta?.display_name || '',
           email: user.email || '',
           phone: meta?.phone || '',
         };
@@ -149,7 +149,7 @@ export async function POST(request: NextRequest) {
     let displayName = profile.display_name;
     const lookupEmail = (profile.email || user.email || '').trim().toLowerCase();
     if (lookupEmail) {
-      const { data: fsMember, error: fsErr } = await supabase
+      const { data: fsMember, error: fsErr } = await supabaseAdmin
         .from('futureshop_members')
         .select('last_name, first_name')
         .eq('email', lookupEmail)
