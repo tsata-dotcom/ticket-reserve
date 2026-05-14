@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { supabaseAdmin } from '@/lib/supabase-admin';
-import { toDisplayName } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
 export const fetchCache = 'force-no-store';
@@ -15,7 +14,7 @@ const supabase = createClient(
 // 初回無料判定。同一 email × 同一 tour_type で payment_status が
 //   authorized / captured / cancel_charged / auth_cancelled のいずれかの
 //   予約が1件でもあれば「2回目以降」（isFirstVisit=false）。
-// tour_type は slug / 日本語名 が混在しうるため両方で検索する。
+// reservations.tour_type は slug 統一済み（ステップ1）なので slug の eq で十分。
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get('authorization');
   if (!authHeader) {
@@ -39,15 +38,11 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const tourTypeValues = Array.from(
-    new Set([tourType, toDisplayName(tourType)].filter(Boolean))
-  );
-
   const { data, error } = await supabaseAdmin
     .from('reservations')
     .select('id')
     .eq('buyer_email', email.trim().toLowerCase())
-    .in('tour_type', tourTypeValues)
+    .eq('tour_type', tourType)
     .in('payment_status', ['authorized', 'captured', 'cancel_charged', 'auth_cancelled'])
     .limit(1);
 

@@ -17,10 +17,14 @@ export default function TourSelector({ selectedSlug, onSelect }: TourSelectorPro
 
   useEffect(() => {
     const fetchTours = async () => {
+      // is_listed=false のツアー（プレオープン等の招待制）は一覧から除外。
+      // /[slug]/page.tsx の直リンク経路では is_listed は見ずに is_active のみで判定するため、
+      // URL を知っている招待者はそちらから予約に入れる。
       const { data, error: fetchError } = await supabase
         .from('tour_types')
         .select('*')
         .eq('is_active', true)
+        .eq('is_listed', true)
         .order('display_order', { ascending: true });
 
       if (fetchError) {

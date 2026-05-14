@@ -11,6 +11,9 @@ export interface TourTypeRecord {
   max_per_booking: number;
   display_order: number;
   is_active: boolean;
+  // is_listed=false のツアー（プレオープン等の招待制）はトップ一覧から除外する。
+  // /[slug]/page.tsx の直リンクからは is_listed を見ずにアクセスできる。
+  is_listed: boolean;
 }
 
 export interface SiteContent {
@@ -28,17 +31,9 @@ export const TOUR_SLUG_META: Record<string, { icon: string; color: string; color
 
 const DEFAULT_META = { icon: '🎁', color: '#1a6985', colorLight: '#e8f4f8' };
 
-// tour_type が slug（karamuki-tour 等）で渡された場合に日本語表示名へ変換するフォールバック。
-// 通常は呼び出し元で tour_types.name を解決済みだが、未解決のスラッグが流れ込んだ場合に
-// 日本語の件名/本文に落とすためのセーフティネット。
-const TOUR_DISPLAY_NAME_MAP: Record<string, string> = {
-  'karamuki-tour': '殻むき体験ツアー',
-  'my-hp': 'My HPづくり',
-};
-
-export function toDisplayName(tourType: string): string {
-  return TOUR_DISPLAY_NAME_MAP[tourType] || tourType;
-}
+// 表示名の解決は tour_types.name を参照する。
+// 旧 toDisplayName 固定マップ（karamuki-tour / my-hp の2エントリ）は撤去済み。
+// 呼び出し元では tour_types を SELECT して name を取得すること。
 
 export interface TourUIRecord extends TourTypeRecord {
   icon: string;

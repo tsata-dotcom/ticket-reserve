@@ -7,7 +7,6 @@ import {
   CALLBACK_HASH_FIELD_ORDER,
 } from "@/lib/sbpayment";
 import { sendQrEmail } from "@/lib/qr-mail";
-import { toDisplayName } from "@/lib/types";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 
 export const dynamic = "force-dynamic";
@@ -190,14 +189,12 @@ export async function POST(request: NextRequest) {
     // - auth_cancelled: 初回無料でチェックイン済み = 無料特典を使い切った
     let isFirstVisit = true;
     if (reservation.buyer_email && reservation.tour_type) {
+      // reservations.tour_type は slug 統一済み（ステップ1）なので slug の eq で十分。
       const { data: prior, error: priorErr } = await supabaseAdmin
         .from("reservations")
         .select("id")
         .eq("buyer_email", reservation.buyer_email)
-        .in("tour_type", Array.from(new Set([
-          reservation.tour_type,
-          toDisplayName(reservation.tour_type),
-        ])))
+        .eq("tour_type", reservation.tour_type)
         .in("payment_status", [
           "authorized",
           "captured",

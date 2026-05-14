@@ -2,7 +2,6 @@ import QRCode from 'qrcode';
 import { sendMail } from './mailer';
 import { supabaseAdmin } from './supabase-admin';
 import { findTourSlot, formatSlotWithTime, getTourSlots } from './tour-slots';
-import { toDisplayName } from './types';
 
 export type CancelPolicySnapshot = {
   '2days'?: number;
@@ -42,7 +41,8 @@ function replaceSubjectPlaceholders(
   params: QrEmailParams,
   slotLabelOnly: string
 ): string {
-  const tourTypeJP = toDisplayName(params.tourType || '');
+  // 呼び出し元は tour_types.name を params.tourType に入れて渡す（slug は別途 tourSlug に入る）。
+  const tourTypeJP = params.tourType || '';
   const visitDateJP = formatDateJP(params.visitDate || '');
   return template
     .replace(/{tourType}/g, tourTypeJP)
@@ -109,6 +109,23 @@ function renderPaymentSection(params: {
   `;
 }
 
+// プレオープンツアー（tour_slug === 'karamuki-tour-preopen'）専用の注記。
+// 招待制で配布した直リンクから予約したお客様に、初回無料 / グランドオープン後は通常料金、
+// という運用ルールを QRメール本文で改めて伝えるためのもの。
+const PREOPEN_TOUR_SLUG = 'karamuki-tour-preopen';
+
+function renderPreopenNoticeSection(tourSlug: string | undefined): string {
+  if (tourSlug !== PREOPEN_TOUR_SLUG) return '';
+  return `
+    <div style="background: #fff7ed; border-left: 4px solid #f59e0b; padding: 12px 16px; margin: 16px 0; border-radius: 4px;">
+      <p style="font-weight: bold; color: #92400e; margin: 0 0 6px 0;">【プレオープン特典】</p>
+      <p style="margin: 0; color: #78350f; line-height: 1.6;">
+        ※プレオープン体験は初回無料です。グランドオープン以降は通常料金となります。
+      </p>
+    </div>
+  `;
+}
+
 function renderCancelPolicySection(policy: CancelPolicySnapshot | null): string {
   if (!policy) return '';
   const twoDays = policy['2days'] ?? 0;
@@ -144,6 +161,7 @@ export async function sendQrEmail(params: QrEmailParams) {
     isFirstVisitFree,
     totalAmount: params.totalAmount,
   });
+  const preopenSection = renderPreopenNoticeSection(params.tourSlug);
   const cancelSection = renderCancelPolicySection(params.cancelPolicy ?? null);
 
   const emailHtml = `
@@ -160,6 +178,7 @@ export async function sendQrEmail(params: QrEmailParams) {
         <p><strong>金額:</strong> ¥${params.totalAmount.toLocaleString()}</p>
       </div>
       ${paymentSection}
+      ${preopenSection}
       ${cancelSection}
       <div style="text-align: center; margin: 20px 0;">
         <img src="cid:qrcode" alt="QRコード" width="200" height="200" />

@@ -138,3 +138,16 @@ export const revalidate = 0;
 - 将来 AM/PM を各2コマにする場合は tour_slots に `slot_key="AM2"` 等の行を追加する
 - tour_slots は RLS で公開読み取り可。クライアントコンポーネントは anon クライアント、
   API ルートは supabaseAdmin で読み取れる
+
+## ツアーマスタとプレオープン（2026/5 リファクタリング ステップ3）
+- ツアー一覧は tour_types テーブルが唯一の正。types.ts のハードコードマップは廃止済み
+  （`TOUR_DISPLAY_NAME_MAP` / `toDisplayName()` は撤去。`TOUR_SLUG_META` は icon/color の
+  視覚メタのみ残置）
+- `tour_types.is_listed=false` のツアーはトップ一覧に出さない（直リンクのみアクセス可）
+- プレオープンツアー（`karamuki-tour-preopen`）は is_listed=false で運用。
+  招待者には直リンクURL（`/karamuki-tour-preopen` 等）を配布する
+- トップ一覧の SELECT（`TourSelector.tsx`）には `is_listed=true` を付け、
+  slug 直接指定の SELECT（`src/app/[slug]/page.tsx`）には付けない
+- QRメール（`src/lib/qr-mail.ts`）は `tour_slug === 'karamuki-tour-preopen'` の場合のみ
+  「プレオープン特典」セクションを本文に追加する
+- ツアーを追加する場合は tour_types に INSERT し、tour_slots にもコマ定義を追加する
