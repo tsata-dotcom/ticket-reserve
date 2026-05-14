@@ -2,6 +2,8 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { TourUIRecord } from '@/lib/types';
+import { supabase } from '@/lib/supabase';
+import { findTourSlot, getTourSlots, TourSlot } from '@/lib/tour-slots';
 
 interface TimeSlotSelectorProps {
   tour: TourUIRecord;
@@ -19,6 +21,7 @@ interface SlotAvail {
 export default function TimeSlotSelector({ tour, selectedDate, onBack, onNext, isLoggedIn }: TimeSlotSelectorProps) {
   const [amAvail, setAmAvail] = useState<SlotAvail | null>(null);
   const [pmAvail, setPmAvail] = useState<SlotAvail | null>(null);
+  const [tourSlots, setTourSlots] = useState<TourSlot[]>([]);
   const [selectedSlot, setSelectedSlot] = useState<'AM' | 'PM' | null>(null);
   const [count, setCount] = useState(1);
   const [loading, setLoading] = useState(true);
@@ -27,19 +30,25 @@ export default function TimeSlotSelector({ tour, selectedDate, onBack, onNext, i
   const dateObj = new Date(selectedDate + 'T00:00:00');
   const dateLabel = `${dateObj.getFullYear()}年${dateObj.getMonth() + 1}月${dateObj.getDate()}日`;
 
+  const amSlot = findTourSlot(tourSlots, 'AM');
+  const pmSlot = findTourSlot(tourSlots, 'PM');
+
   useEffect(() => {
     const fetchSlots = async () => {
       setLoading(true);
       const d = new Date(selectedDate);
-      const res = await fetch(
-        `/api/availability?year=${d.getFullYear()}&month=${d.getMonth() + 1}&tour_type=${encodeURIComponent(tour.slug)}`
-      );
-      const data = await res.json();
-      const dayAvail = data.availability?.[selectedDate];
+      const [availRes, slots] = await Promise.all([
+        fetch(
+          `/api/availability?year=${d.getFullYear()}&month=${d.getMonth() + 1}&tour_type=${encodeURIComponent(tour.slug)}`
+        ).then(r => r.json()),
+        getTourSlots(supabase, tour.slug),
+      ]);
+      const dayAvail = availRes.availability?.[selectedDate];
       if (dayAvail) {
         setAmAvail(dayAvail.AM);
         setPmAvail(dayAvail.PM);
       }
+      setTourSlots(slots);
       setLoading(false);
     };
     fetchSlots();
@@ -106,8 +115,8 @@ export default function TimeSlotSelector({ tour, selectedDate, onBack, onNext, i
         >
           <div className="flex items-center justify-between">
             <div>
-              <p className="font-bold text-lg">午前の部</p>
-              <p className="text-sm text-gray-500">10:00〜11:30</p>
+              <p className="font-bold text-lg">{amSlot.label}</p>
+              <p className="text-sm text-gray-500">{amSlot.timeLabel}</p>
             </div>
             <div className="text-right">
               {amAvail?.status === 'full' ? (
@@ -137,8 +146,8 @@ export default function TimeSlotSelector({ tour, selectedDate, onBack, onNext, i
         >
           <div className="flex items-center justify-between">
             <div>
-              <p className="font-bold text-lg">午後の部</p>
-              <p className="text-sm text-gray-500">14:00〜15:30</p>
+              <p className="font-bold text-lg">{pmSlot.label}</p>
+              <p className="text-sm text-gray-500">{pmSlot.timeLabel}</p>
             </div>
             <div className="text-right">
               {pmAvail?.status === 'full' ? (

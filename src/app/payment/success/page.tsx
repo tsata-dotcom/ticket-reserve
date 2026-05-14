@@ -6,6 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import Header from '@/components/Header';
 import { supabase } from '@/lib/supabase';
 import { AuthProvider } from '@/lib/auth-context';
+import { findTourSlot, formatSlotWithTime, getTourSlots, TourSlot } from '@/lib/tour-slots';
 
 type ReservationView = {
   id: string;
@@ -32,15 +33,12 @@ function decodeOrderId(orderId: string): string | null {
   return `${hex.substring(0, 8)}-${hex.substring(8, 12)}-${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20, 32)}`.toLowerCase();
 }
 
-function timeSlotLabel(slot: 'AM' | 'PM') {
-  return slot === 'AM' ? '午前の部（10:00〜11:30）' : '午後の部（14:00〜15:30）';
-}
-
 function PaymentSuccessContent() {
   const searchParams = useSearchParams();
   const orderId = searchParams.get('order_id') ?? '';
   const [reservation, setReservation] = useState<ReservationView | null>(null);
   const [tourName, setTourName] = useState<string>('');
+  const [tourSlots, setTourSlots] = useState<TourSlot[]>([]);
   const [loading, setLoading] = useState(true);
   const [pollCount, setPollCount] = useState(0);
   const [error, setError] = useState('');
@@ -88,12 +86,16 @@ function PaymentSuccessContent() {
       }
 
       if (data.tour_type) {
-        const { data: tourRow } = await supabase
-          .from('tour_types')
-          .select('slug, name')
-          .eq('slug', data.tour_type)
-          .maybeSingle();
-        if (tourRow) setTourName((tourRow as TourLite).name);
+        const [tourRowRes, slots] = await Promise.all([
+          supabase
+            .from('tour_types')
+            .select('slug, name')
+            .eq('slug', data.tour_type)
+            .maybeSingle(),
+          getTourSlots(supabase, data.tour_type),
+        ]);
+        if (tourRowRes.data) setTourName((tourRowRes.data as TourLite).name);
+        setTourSlots(slots);
       }
       setLoading(false);
     };
@@ -200,7 +202,10 @@ function PaymentSuccessContent() {
           </div>
           <div className="flex justify-between border-b border-gray-100 pb-3">
             <span className="text-gray-500">時間帯</span>
-            <span className="font-bold">{timeSlotLabel(reservation.time_slot)}</span>
+            <span className="font-bold">{(() => {
+              const info = findTourSlot(tourSlots, reservation.time_slot);
+              return formatSlotWithTime(info.label, info.timeLabel);
+            })()}</span>
           </div>
           <div className="flex justify-between border-b border-gray-100 pb-3">
             <span className="text-gray-500">参加人数</span>

@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { TourUIRecord } from '@/lib/types';
+import { supabase } from '@/lib/supabase';
+import { findTourSlot, formatSlotWithTime, getTourSlots, TourSlot } from '@/lib/tour-slots';
 import QRCode from 'qrcode';
 
 interface CompletionProps {
@@ -16,14 +18,20 @@ interface CompletionProps {
 
 export default function Completion({ tour, selectedDate, timeSlot, ticketCount, orderNo, onReset }: CompletionProps) {
   const [qrDataUrl, setQrDataUrl] = useState('');
+  const [tourSlots, setTourSlots] = useState<TourSlot[]>([]);
 
   const dateObj = new Date(selectedDate + 'T00:00:00');
   const dateLabel = `${dateObj.getFullYear()}年${dateObj.getMonth() + 1}月${dateObj.getDate()}日`;
-  const timeSlotLabel = timeSlot === 'AM' ? '午前の部（10:00〜11:30）' : '午後の部（14:00〜15:30）';
+  const slotInfo = findTourSlot(tourSlots, timeSlot);
+  const timeSlotLabel = formatSlotWithTime(slotInfo.label, slotInfo.timeLabel);
 
   useEffect(() => {
     QRCode.toDataURL(orderNo, { width: 200, margin: 2 }).then(setQrDataUrl);
   }, [orderNo]);
+
+  useEffect(() => {
+    getTourSlots(supabase, tour.slug).then(setTourSlots);
+  }, [tour.slug]);
 
   return (
     <div className="animate-fade-in text-center">

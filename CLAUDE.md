@@ -126,3 +126,15 @@ export const revalidate = 0;
 - src/lib/types.ts の `toDisplayName` 固定マップも後続ステップで
   tour_types テーブル参照に置き換え予定
 - 新規にツアー関連データを書き込む際は必ず slug を使い、日本語名を入れないこと
+
+## 時間帯の時刻表示（2026/5 リファクタリング ステップ2）
+- 時間帯の時刻ラベル（"10:00〜11:30" 等）は `tour_slots` テーブルで管理
+- `time_slot_settings.slot`（"AM"/"PM"）と `tour_slots.slot_key` を結合して時刻を得る
+- 時刻表示が必要な箇所は `src/lib/tour-slots.ts` のヘルパーを使う
+  - `getTourSlots(client, tourSlug)`: あるツアーの有効スロット一覧
+  - `findTourSlot(slots, slotKey)`: スロット配列から `{ label, timeLabel }` を取得
+  - `formatSlotWithTime(label, timeLabel)`: "label（timeLabel）" 形式に整形
+- 時刻をハードコードしないこと
+- 将来 AM/PM を各2コマにする場合は tour_slots に `slot_key="AM2"` 等の行を追加する
+- tour_slots は RLS で公開読み取り可。クライアントコンポーネントは anon クライアント、
+  API ルートは supabaseAdmin で読み取れる

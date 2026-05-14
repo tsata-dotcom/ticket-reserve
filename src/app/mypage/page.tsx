@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { AuthProvider, useAuth } from '@/lib/auth-context';
 import { supabase } from '@/lib/supabase';
 import { Reservation } from '@/lib/types';
+import { findTourSlot, formatSlotWithTime, TourSlot } from '@/lib/tour-slots';
 import Header from '@/components/Header';
 
 // payment_messages テーブルの実カラムは message_key / message_text / description。
@@ -90,6 +91,7 @@ function MyPageContent() {
   const router = useRouter();
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [tourNameMap, setTourNameMap] = useState<Record<string, string>>({});
+  const [tourSlotsMap, setTourSlotsMap] = useState<Record<string, TourSlot[]>>({});
   const [paymentMessages, setPaymentMessages] = useState<Record<string, PaymentMessage>>({});
   const [loading, setLoading] = useState(true);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
@@ -101,9 +103,16 @@ function MyPageContent() {
 
   useEffect(() => {
     const fetchAux = async () => {
-      const [tours, msgs] = await Promise.all([
+      const [tours, msgs, slots] = await Promise.all([
         supabase.from('tour_types').select('slug, name'),
         supabase.from('payment_messages').select('message_key, message_text, description'),
+        // tour_slots は公開読み取り可。reservations の tour_type は全て slug 統一済み
+        // (ステップ1) なので、全有効スロットを一括取得して tour_slug ごとに分配する。
+        supabase
+          .from('tour_slots')
+          .select('tour_slug, slot_key, label, time_label, display_order, is_active')
+          .eq('is_active', true)
+          .order('display_order', { ascending: true }),
       ]);
       if (tours.data) {
         const map: Record<string, string> = {};
@@ -114,6 +123,13 @@ function MyPageContent() {
         const map: Record<string, PaymentMessage> = {};
         for (const m of msgs.data as PaymentMessage[]) map[m.message_key] = m;
         setPaymentMessages(map);
+      }
+      if (slots.data) {
+        const map: Record<string, TourSlot[]> = {};
+        for (const s of slots.data as TourSlot[]) {
+          (map[s.tour_slug] ??= []).push(s);
+        }
+        setTourSlotsMap(map);
       }
     };
     fetchAux();
@@ -221,9 +237,9 @@ function MyPageContent() {
       amount: confirmPreview.tourAmount.toLocaleString(),
       buyer_name: confirmTarget.buyer_name ?? '',
       visit_date: dateLabel,
-      time_slot: confirmTarget.time_slot === 'AM' ? '午前の部' : '午後の部',
+      time_slot: findTourSlot(tourSlotsMap[confirmTarget.tour_type] ?? [], confirmTarget.time_slot).label,
     });
-  }, [confirmTarget, confirmPreview, paymentMessages]);
+  }, [confirmTarget, confirmPreview, paymentMessages, tourSlotsMap]);
 
   const confirmTitle = useMemo(() => {
     if (!confirmPreview) return '';
@@ -266,8 +282,10 @@ function MyPageContent() {
   const upcoming = reservations.filter(r => r.visit_date > today && r.status === 'reserved');
   const past = reservations.filter(r => r.visit_date <= today || r.status !== 'reserved');
 
-  const timeSlotLabel = (slot: string) =>
-    slot === 'AM' ? '午前の部（10:00〜11:30）' : '午後の部（14:00〜15:30）';
+  const timeSlotLabel = (slot: string, tourSlug: string) => {
+    const info = findTourSlot(tourSlotsMap[tourSlug] ?? [], slot);
+    return formatSlotWithTime(info.label, info.timeLabel);
+  };
 
   const statusLabel = (status: string) => {
     switch (status) {
@@ -319,7 +337,7 @@ function MyPageContent() {
                     <div className="flex items-start justify-between mb-2">
                       <div>
                         <p className="font-bold text-gray-800">{tourLabel(r.tour_type)}</p>
-                        <p className="text-sm text-gray-500">{r.visit_date.replace(/-/g, '/')} {timeSlotLabel(r.time_slot)}</p>
+                        <p className="text-sm text-gray-500">{r.visit_date.replace(/-/g, '/')} {timeSlotLabel(r.time_slot, r.tour_type)}</p>
                       </div>
                       <span className={`text-xs px-2 py-1 rounded-full font-bold ${s.color}`}>{s.text}</span>
                     </div>
@@ -361,7 +379,7 @@ function MyPageContent() {
                     <div className="flex items-start justify-between mb-2">
                       <div>
                         <p className="font-bold text-gray-800">{tourLabel(r.tour_type)}</p>
-                        <p className="text-sm text-gray-500">{r.visit_date.replace(/-/g, '/')} {timeSlotLabel(r.time_slot)}</p>
+                        <p className="text-sm text-gray-500">{r.visit_date.replace(/-/g, '/')} {timeSlotLabel(r.time_slot, r.tour_type)}</p>
                       </div>
                       <span className={`text-xs px-2 py-1 rounded-full font-bold ${s.color}`}>{s.text}</span>
                     </div>

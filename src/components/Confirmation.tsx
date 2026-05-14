@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { SiteContent, TourUIRecord } from '@/lib/types';
 import { supabase } from '@/lib/supabase';
+import { findTourSlot, formatSlotWithTime, getTourSlots, TourSlot } from '@/lib/tour-slots';
 
 interface ConfirmationProps {
   tour: TourUIRecord;
@@ -45,6 +46,7 @@ export default function Confirmation({ tour, selectedDate, timeSlot, ticketCount
   const [agreed, setAgreed] = useState(false);
   const [paymentMessages, setPaymentMessages] = useState<Record<string, PaymentMessage>>({});
   const [tourPolicy, setTourPolicy] = useState<TourCancelPolicy | null>(null);
+  const [tourSlots, setTourSlots] = useState<TourSlot[]>([]);
   const [showConfirm, setShowConfirm] = useState(false);
 
   const isFutureshopLinked = !!futureshopMember || !!profile?.futureshop_member_id;
@@ -57,7 +59,8 @@ export default function Confirmation({ tour, selectedDate, timeSlot, ticketCount
 
   const dateObj = new Date(selectedDate + 'T00:00:00');
   const dateLabel = `${dateObj.getFullYear()}年${dateObj.getMonth() + 1}月${dateObj.getDate()}日`;
-  const timeSlotLabel = timeSlot === 'AM' ? '午前の部（10:00〜11:30）' : '午後の部（14:00〜15:30）';
+  const slotInfo = findTourSlot(tourSlots, timeSlot);
+  const timeSlotLabel = formatSlotWithTime(slotInfo.label, slotInfo.timeLabel);
 
   // Phase 2: 全顧客にオーソリ。表示金額はツアー料金 × 人数（割引なし）。
   const totalAmount = tour.price * ticketCount;
@@ -114,7 +117,7 @@ export default function Confirmation({ tour, selectedDate, timeSlot, ticketCount
 
   useEffect(() => {
     const fetchAux = async () => {
-      const [policyRes, msgsRes, tourRes] = await Promise.all([
+      const [policyRes, msgsRes, tourRes, slots] = await Promise.all([
         supabase
           .from('site_content')
           .select('content_key, title, body')
@@ -126,6 +129,7 @@ export default function Confirmation({ tour, selectedDate, timeSlot, ticketCount
           .select('has_first_visit_free, cancel_policy_2days_rate, cancel_policy_1day_rate, cancel_policy_today_rate')
           .eq('slug', tour.slug)
           .maybeSingle(),
+        getTourSlots(supabase, tour.slug),
       ]);
 
       if (policyRes.data) setPolicy(policyRes.data as SiteContent);
@@ -137,6 +141,7 @@ export default function Confirmation({ tour, selectedDate, timeSlot, ticketCount
         setPaymentMessages(map);
       }
       if (tourRes.data) setTourPolicy(tourRes.data as TourCancelPolicy);
+      setTourSlots(slots);
     };
     fetchAux();
   }, [tour.slug]);

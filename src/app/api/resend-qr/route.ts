@@ -68,6 +68,7 @@ export async function POST(request: NextRequest) {
       displayName: reservation.buyer_name,
       orderNo: reservation.order_no,
       tourType: tourTypeLabel,
+      tourSlug: tourRecord?.slug ?? reservation.tour_type,
       visitDate: reservation.visit_date,
       timeSlot: reservation.time_slot,
       ticketCount: reservation.ticket_count,

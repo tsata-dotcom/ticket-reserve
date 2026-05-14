@@ -1,6 +1,7 @@
 import QRCode from 'qrcode';
 import { sendMail } from './mailer';
 import { supabaseAdmin } from './supabase-admin';
+import { findTourSlot, formatSlotWithTime, getTourSlots } from './tour-slots';
 import { toDisplayName } from './types';
 
 export type CancelPolicySnapshot = {
@@ -14,6 +15,9 @@ export interface QrEmailParams {
   displayName: string;
   orderNo: string;
   tourType: string;
+  // tour_types.slug。tour_slots から時間帯ラベル / 時刻ラベルを引くのに使う。
+  // 旧ルートからの呼び出しで未指定の場合は、slot_key をそのまま label にフォールバックする。
+  tourSlug?: string;
   visitDate: string;
   timeSlot: string;
   ticketCount: number;
@@ -33,19 +37,17 @@ function formatDateJP(dateStr: string): string {
   return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
 }
 
-function replaceSubjectPlaceholders(template: string, params: QrEmailParams): string {
+function replaceSubjectPlaceholders(
+  template: string,
+  params: QrEmailParams,
+  slotLabelOnly: string
+): string {
   const tourTypeJP = toDisplayName(params.tourType || '');
   const visitDateJP = formatDateJP(params.visitDate || '');
-  const timeSlotLabel =
-    params.timeSlot === 'AM'
-      ? '午前の部'
-      : params.timeSlot === 'PM'
-        ? '午後の部'
-        : params.timeSlot || '';
   return template
     .replace(/{tourType}/g, tourTypeJP)
     .replace(/{visitDate}/g, visitDateJP)
-    .replace(/{timeSlot}/g, timeSlotLabel)
+    .replace(/{timeSlot}/g, slotLabelOnly)
     .replace(/{ticketCount}/g, String(params.ticketCount || ''))
     .replace(/{orderNo}/g, params.orderNo || '')
     .replace(/{displayName}/g, params.displayName || '')
@@ -129,7 +131,13 @@ export async function sendQrEmail(params: QrEmailParams) {
   const qrDataUrl = await QRCode.toDataURL(params.orderNo, { width: 200, margin: 2 });
   const qrBase64 = qrDataUrl.replace(/^data:image\/png;base64,/, '');
 
-  const timeSlotLabel = params.timeSlot === 'AM' ? '午前の部（10:00〜11:30）' : '午後の部（14:00〜15:30）';
+  // tour_slots からスロットラベル / 時刻ラベルを取得。
+  // 件名は label のみ（時刻なし）、本文は "label（time_label）" 形式で出力する。
+  // tourSlug 未指定（旧ルート）や DB に該当行が無い場合は slot_key をそのままラベルに使う。
+  const slots = params.tourSlug ? await getTourSlots(supabaseAdmin, params.tourSlug) : [];
+  const slotInfo = findTourSlot(slots, params.timeSlot);
+  const slotLabelOnly = slotInfo.label;
+  const timeSlotLabel = formatSlotWithTime(slotInfo.label, slotInfo.timeLabel);
   const isFirstVisitFree = params.isFirstVisitFree === true;
 
   const paymentSection = renderPaymentSection({
@@ -161,7 +169,7 @@ export async function sendQrEmail(params: QrEmailParams) {
   `;
 
   const subjectTemplate = await fetchSubjectTemplate();
-  const subject = replaceSubjectPlaceholders(subjectTemplate, params);
+  const subject = replaceSubjectPlaceholders(subjectTemplate, params, slotLabelOnly);
 
   return sendMail({
     to: params.to,
