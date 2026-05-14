@@ -115,3 +115,14 @@ export const revalidate = 0;
 ### 初回無料判定
 - クライアント側（Confirmation.tsx）からの直接 reservations アクセスは廃止
 - /api/check-first-visit API ルート経由で supabaseAdmin を使用
+
+## tour_type の扱い（2026/5 リファクタリング ステップ1）
+- DB の tour_type カラムは全テーブルで slug 値（例: `karamuki-tour`）に統一済み
+- time_slot_settings / slot_templates / reservations すべて slug で保存されている
+- 日本語表示名が必要な場合は tour_types テーブルの name カラムを参照する
+- tour_types テーブルに実在するツアーは `karamuki-tour` と `original-kani` の2件
+- src/app/api/availability/route.ts は slug/name 両対応の `.in()` 検索のままだが、
+  DB は slug 統一済みのため、後続ステップで slug 単独の `.eq()` に簡素化予定
+- src/lib/types.ts の `toDisplayName` 固定マップも後続ステップで
+  tour_types テーブル参照に置き換え予定
+- 新規にツアー関連データを書き込む際は必ず slug を使い、日本語名を入れないこと
