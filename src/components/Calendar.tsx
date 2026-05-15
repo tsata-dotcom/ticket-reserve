@@ -14,6 +14,9 @@ interface CalendarProps {
   // /api/availability のレスポンス到着前はデフォルトの相対範囲（今月）で
   // 描画してしまうとちらつくため、初期描画をローディングに差し替える。
   bookingRangeMode?: 'relative' | 'absolute' | null;
+  // absolute モード時に SSR で事前取得した有効日付一覧。これを渡すと
+  // 初回 /api/availability 応答を待たずに正しい月でカレンダー枠が描画される。
+  initialAbsoluteDates?: string[];
   onSelectDate: (date: string) => void;
   selectedDate: string | null;
 }
@@ -40,11 +43,36 @@ function StatusBadge({ label, status, remaining }: { label: string; status: stri
   );
 }
 
-export default function Calendar({ tourSlug, bookingRangeMode, onSelectDate, selectedDate }: CalendarProps) {
-  const [bookingRange, setBookingRange] = useState<BookingRangeResponse | null>(null);
-  // 初期表示は今日の月。bookingRange 受信後、absolute モードかつ最小日が
-  // 未来の月にある場合はその月にジャンプする。
+export default function Calendar({
+  tourSlug,
+  bookingRangeMode,
+  initialAbsoluteDates,
+  onSelectDate,
+  selectedDate,
+}: CalendarProps) {
+  // SSR で absoluteDates が渡されていれば、初回レンダリングから bookingRange を
+  // 確定状態にしておく。Calendar はこのとき正しい月で骨格を描画でき、
+  // /api/availability のレスポンス待ち中もブランクにならない。
+  const hasInitialAbsolute =
+    bookingRangeMode === 'absolute' &&
+    Array.isArray(initialAbsoluteDates) &&
+    initialAbsoluteDates.length > 0;
+
+  const [bookingRange, setBookingRange] = useState<BookingRangeResponse | null>(() => {
+    if (hasInitialAbsolute) {
+      return { mode: 'absolute', absoluteDates: initialAbsoluteDates };
+    }
+    return null;
+  });
+
+  // absolute モードかつ事前データありの場合は最小日の月から表示開始。
+  // それ以外は今日の月（relative モード / 事前データなしのフォールバック）。
   const [currentMonth, setCurrentMonth] = useState(() => {
+    if (hasInitialAbsolute) {
+      const first = initialAbsoluteDates![0];
+      const [yStr, mStr] = first.split('-');
+      return { year: parseInt(yStr, 10), month: parseInt(mStr, 10) };
+    }
     const now = new Date();
     return { year: now.getFullYear(), month: now.getMonth() + 1 };
   });
@@ -133,9 +161,11 @@ export default function Calendar({ tourSlug, bookingRangeMode, onSelectDate, sel
     ? `${minDate.getMonth() + 1}/${minDate.getDate()} 〜 ${maxDate.getMonth() + 1}/${maxDate.getDate()}`
     : '現在ご予約いただける日付はありません';
 
-  // absolute モードで /api/availability の初回レスポンスがまだ来ていない間は、
-  // デフォルトの相対範囲（今月）でカレンダーを描画するとちらついて未来月へ
-  // ジャンプする見た目になる。代わりにローディングだけを表示する。
+  // absolute モードで /api/availability の初回レスポンスがまだ来ておらず
+  // かつ SSR 経由の initialAbsoluteDates も無い場合のみ、デフォルトの相対範囲
+  // （今月）でちらつくのを避けるためにローディングだけを表示する。
+  // 通常のフロー（/[slug] 直リンク）では initialAbsoluteDates が渡るため
+  // この分岐には入らず、骨格が即時描画される。
   if (bookingRangeMode === 'absolute' && !bookingRange) {
     return (
       <div className="animate-fade-in mt-6">
@@ -183,12 +213,10 @@ export default function Calendar({ tourSlug, bookingRangeMode, onSelectDate, sel
         <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-gray-100 border border-gray-300" />休／期間外</span>
       </div>
 
-      {loading ? (
-        <div className="flex justify-center py-12">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
-        </div>
-      ) : (
-        <div className="border border-gray-200 rounded-lg overflow-hidden">
+      {/* グリッドは loading 中も骨格として表示する。日付セルの中身（AM/PM バッジ）は
+          availability が届いてから埋まる。これによりフェッチ中のフルブランクを
+          排除し、体感速度を改善する。 */}
+      <div className={`border border-gray-200 rounded-lg overflow-hidden ${loading ? 'opacity-70' : ''}`}>
           {/* Weekday headers */}
           <div className="grid grid-cols-7 bg-gray-50">
             {WEEKDAYS.map((day, i) => (
@@ -269,8 +297,7 @@ export default function Calendar({ tourSlug, bookingRangeMode, onSelectDate, sel
               );
             })}
           </div>
-        </div>
-      )}
+      </div>
     </div>
   );
 }

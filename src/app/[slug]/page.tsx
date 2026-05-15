@@ -32,5 +32,37 @@ export default async function TourSlugPage({ params }: PageProps) {
     notFound();
   }
 
-  return <TourBookingFlow tour={tour as TourTypeRecord} />;
+  const tourRecord = tour as TourTypeRecord;
+
+  // absolute モードのツアーは初回 /api/availability 応答を待つと
+  // カレンダーが数秒ブランクになるため、ここで absoluteDates を SSR で
+  // 先読みして子に渡す。relative モードは追加クエリ不要。
+  let initialAbsoluteDates: string[] | undefined;
+  if (tourRecord.booking_range_mode === 'absolute') {
+    const settingsKeys = Array.from(
+      new Set([tourRecord.slug, tourRecord.name].filter(Boolean) as string[])
+    );
+    const { data: settingsRows, error: settingsErr } = await supabase
+      .from('time_slot_settings')
+      .select('date')
+      .in('tour_type', settingsKeys)
+      .eq('is_active', true);
+    if (settingsErr) {
+      console.error('[/[slug]] absoluteDates fetch error:', settingsErr);
+    }
+    initialAbsoluteDates = Array.from(
+      new Set(
+        (settingsRows ?? [])
+          .map(r => (typeof r.date === 'string' ? r.date.slice(0, 10) : ''))
+          .filter(d => d.length === 10)
+      )
+    ).sort();
+  }
+
+  return (
+    <TourBookingFlow
+      tour={tourRecord}
+      initialAbsoluteDates={initialAbsoluteDates}
+    />
+  );
 }

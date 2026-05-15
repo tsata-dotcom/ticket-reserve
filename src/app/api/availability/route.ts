@@ -32,19 +32,30 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'year, month, tour_type are required' }, { status: 400 });
   }
 
+  const t0 = Date.now();
+
   const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
   const lastDay = new Date(year, month, 0).getDate();
   const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
 
-  // tour_types からコース名（time_slot_settings 検索キー）と既定容量を取得。
-  const { data: tourRecord, error: tourErr } = await supabase
-    .from('tour_types')
-    .select('*')
-    .eq('slug', tourSlug)
-    .maybeSingle();
+  // フェーズ1: ツアー本体と休業日は互いに独立なので並列に取得する。
+  // 元コードでは tour_types → reservations → settings → holidays を直列に
+  // 走らせており 4 ラウンドトリップ分の遅延（数百ms × 4）が積み上がっていた。
+  const [tourResp, holidayResp] = await Promise.all([
+    supabase.from('tour_types').select('*').eq('slug', tourSlug).maybeSingle(),
+    supabaseAdmin
+      .from('holidays')
+      .select('date')
+      .gte('date', startDate)
+      .lte('date', endDate),
+  ]);
 
-  if (tourErr) {
-    console.error('[availability] tour_types fetch error:', tourErr);
+  const tourRecord = tourResp.data;
+  if (tourResp.error) {
+    console.error('[availability] tour_types fetch error:', tourResp.error);
+  }
+  if (holidayResp.error) {
+    console.error('[availability] holidays fetch error:', holidayResp.error);
   }
 
   const tourName: string | null =
@@ -74,6 +85,16 @@ export async function GET(request: NextRequest) {
     ? Array.from(new Set([tourSlug, tourName]))
     : [tourSlug];
 
+  // time_slot_settings の tour_type 列も slug / name の両方で拾う。
+  // 現在 DB は slug 統一済み（ステップ1）。tour_types.name は保険として併用。
+  const settingsTourTypeKeys = Array.from(
+    new Set([tourSlug, ...(tourName ? [tourName] : [])])
+  );
+
+  // フェーズ2: ツアー情報が必要な reservations / time_slot_settings を並列で取得。
+  // absolute モードでは時刻データを全期間取得し、月のレンダリング用 + absoluteDates
+  // 用の二度クエリを排する（=従来5回→3回まで削減）。relative モードは引き続き
+  // 月の範囲だけ取得する。
   // 枠を実際に消費するのは「正規の予約として確定したレコード」のみとする。
   // 'cancelled' に加えて以下も枠カウントから除外:
   //   - pending_payment: SBペイメント決済画面遷移中（callback で reserved に昇格）。
@@ -81,34 +102,45 @@ export async function GET(request: NextRequest) {
   //   - payment_failed: 決済失敗。実体は予約成立していない。
   //   - expired:        /api/payment/cleanup で時間切れにした pending_payment。
   // 残る reserved / checked_in / confirmed 等は引き続き枠消費としてカウントする。
-  const { data: reservations, error: resErr } = await supabaseAdmin
-    .from('reservations')
-    .select('visit_date, time_slot, ticket_count')
-    .in('tour_type', tourTypeValues)
-    .not('status', 'in', '("cancelled","expired","payment_failed","pending_payment")')
-    .gte('visit_date', startDate)
-    .lte('visit_date', endDate);
+  const settingsQuery = isAbsolute
+    ? supabase
+        .from('time_slot_settings')
+        .select('date, slot, capacity, is_active, tour_type')
+        .in('tour_type', settingsTourTypeKeys)
+    : supabase
+        .from('time_slot_settings')
+        .select('date, slot, capacity, is_active, tour_type')
+        .in('tour_type', settingsTourTypeKeys)
+        .gte('date', startDate)
+        .lte('date', endDate);
 
-  if (resErr) {
-    console.error('[availability] reservations fetch error:', resErr);
+  const [resResp, settingsResp] = await Promise.all([
+    supabaseAdmin
+      .from('reservations')
+      .select('visit_date, time_slot, ticket_count')
+      .in('tour_type', tourTypeValues)
+      .not('status', 'in', '("cancelled","expired","payment_failed","pending_payment")')
+      .gte('visit_date', startDate)
+      .lte('visit_date', endDate),
+    settingsQuery,
+  ]);
+
+  const reservations = resResp.data;
+  if (resResp.error) {
+    console.error('[availability] reservations fetch error:', resResp.error);
+  }
+  if (settingsResp.error) {
+    console.error('[availability] time_slot_settings fetch error:', settingsResp.error);
   }
 
-  // time_slot_settings の tour_type 列も slug / name の両方で拾う。
-  // 現在 DB は slug 統一済み（ステップ1）。tour_types.name は保険として併用。
-  const settingsTourTypeKeys = Array.from(
-    new Set([tourSlug, ...(tourName ? [tourName] : [])])
-  );
-
-  const { data: settings, error: settingsErr } = await supabase
-    .from('time_slot_settings')
-    .select('date, slot, capacity, is_active, tour_type')
-    .in('tour_type', settingsTourTypeKeys)
-    .gte('date', startDate)
-    .lte('date', endDate);
-
-  if (settingsErr) {
-    console.error('[availability] time_slot_settings fetch error:', settingsErr);
-  }
+  // 月レンダリング用には当月分だけに絞る。absolute では allSettings を流用。
+  const allSettings = settingsResp.data ?? [];
+  const settings = isAbsolute
+    ? allSettings.filter(s => {
+        const d = normalizeDateString(s.date);
+        return d >= startDate && d <= endDate;
+      })
+    : allSettings;
 
   // 休業日: ticket-system 側で /slot-management の「休業日管理」から登録される。
   // 該当日は AM/PM とも remaining=0 / status='closed' で返す（time_slot_settings に
@@ -116,15 +148,7 @@ export async function GET(request: NextRequest) {
   // holidays は anon に SELECT ポリシーが無く、anon クライアントだと
   // 静かに空配列が返って休業日が反映されない。RLS をバイパスするため
   // service_role の supabaseAdmin で読む（公開情報なので問題なし）。
-  const { data: holidayRows, error: holidaysErr } = await supabaseAdmin
-    .from('holidays')
-    .select('date')
-    .gte('date', startDate)
-    .lte('date', endDate);
-
-  if (holidaysErr) {
-    console.error('[availability] holidays fetch error:', holidaysErr);
-  }
+  const holidayRows = holidayResp.data;
 
   const holidaySet = new Set(
     (holidayRows ?? [])
@@ -187,26 +211,21 @@ export async function GET(request: NextRequest) {
 
   // ステップ3.5: absolute モードは time_slot_settings に行がある日付一覧を全期間で返す。
   // Calendar 側がこの一覧から最小日〜最大日（カレンダー表示範囲）を決める。
+  // フェーズ2 で全期間の settings を既に取得済みなので、追加クエリ不要で
+  // メモリ上でフィルタするだけ。
   let absoluteDates: string[] | undefined;
   if (isAbsolute) {
-    const { data: allSettings, error: allErr } = await supabase
-      .from('time_slot_settings')
-      .select('date, is_active')
-      .in('tour_type', settingsTourTypeKeys)
-      .eq('is_active', true);
-
-    if (allErr) {
-      console.error('[availability] absolute-dates fetch error:', allErr);
-    }
-
     absoluteDates = Array.from(
       new Set(
-        (allSettings ?? [])
+        allSettings
+          .filter(s => s.is_active !== false)
           .map(s => normalizeDateString(s.date))
           .filter(d => d.length === 10)
       )
     ).sort();
   }
+
+  console.log(`[availability] tour=${tourSlug} ${year}-${month} took ${Date.now() - t0}ms`);
 
   return NextResponse.json({
     availability,

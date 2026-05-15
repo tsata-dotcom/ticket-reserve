@@ -15,6 +15,9 @@ import Completion from '@/components/Completion';
 
 interface TourBookingFlowProps {
   tour: TourTypeRecord;
+  // SSR で事前取得した absolute モード用の日付一覧。
+  // Calendar 初期化に渡すことで /api/availability 応答待ちのブランクを排除する。
+  initialAbsoluteDates?: string[];
 }
 
 // 「体験を選ぶ」を除いた4ステップのインジケータ。
@@ -27,7 +30,7 @@ const TOUR_STEPS: Step[] = [
   { label: '完了', num: '❺' },
 ];
 
-function TourFlow({ tour: initialTour }: TourBookingFlowProps) {
+function TourFlow({ tour: initialTour, initialAbsoluteDates }: TourBookingFlowProps) {
   const { user, loading } = useAuth();
   const [step, setStep] = useState(0);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
@@ -102,6 +105,7 @@ function TourFlow({ tour: initialTour }: TourBookingFlowProps) {
               <Calendar
                 tourSlug={tour.slug}
                 bookingRangeMode={tour.booking_range_mode}
+                initialAbsoluteDates={initialAbsoluteDates}
                 onSelectDate={handleDateSelect}
                 selectedDate={selectedDate}
               />
@@ -192,10 +196,10 @@ function TourFlow({ tour: initialTour }: TourBookingFlowProps) {
   );
 }
 
-export default function TourBookingFlow({ tour }: TourBookingFlowProps) {
+export default function TourBookingFlow({ tour, initialAbsoluteDates }: TourBookingFlowProps) {
   return (
     <AuthProvider>
-      <TourFlow tour={tour} />
+      <TourFlow tour={tour} initialAbsoluteDates={initialAbsoluteDates} />
     </AuthProvider>
   );
 }
