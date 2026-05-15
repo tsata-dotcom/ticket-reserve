@@ -84,18 +84,19 @@ export default function TimeSlotSelector({ tour, selectedDate, onBack, onNext, i
 
   return (
     <div className="animate-fade-in">
-      {/* Tour info bar */}
+      {/* Tour info bar — モバイルでは tour 名と日付を縦に積む（横一列だと
+          長いツアー名 + 日付で 375px 幅を超えるため）。md: 以上は元の横並び。 */}
       <button
         onClick={onBack}
         className="w-full flex items-center gap-2 p-3 rounded-lg mb-4"
         style={{ backgroundColor: tour.colorLight }}
       >
-        <span className="text-2xl">{tour.icon}</span>
-        <div className="text-left">
-          <span className="font-bold text-sm" style={{ color: tour.color }}>{tour.name}</span>
-          <span className="text-sm text-gray-600 ml-2">{dateLabel}</span>
+        <span className="text-2xl flex-shrink-0">{tour.icon}</span>
+        <div className="text-left min-w-0 flex-1">
+          <span className="font-bold text-sm block md:inline" style={{ color: tour.color }}>{tour.name}</span>
+          <span className="text-xs text-gray-600 block md:inline md:text-sm md:ml-2">{dateLabel}</span>
         </div>
-        <span className="ml-auto text-xs text-gray-400">← 変更</span>
+        <span className="ml-2 text-xs text-gray-400 flex-shrink-0">← 変更</span>
       </button>
 
       <h2 className="text-lg font-bold text-gray-800 mb-4 text-center">時間帯を選んでください</h2>

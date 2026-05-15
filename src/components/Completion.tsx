@@ -26,7 +26,10 @@ export default function Completion({ tour, selectedDate, timeSlot, ticketCount, 
   const timeSlotLabel = formatSlotWithTime(slotInfo.label, slotInfo.timeLabel);
 
   useEffect(() => {
-    QRCode.toDataURL(orderNo, { width: 200, margin: 2 }).then(setQrDataUrl);
+    // 店舗スタッフがお客様のスマホで QR を読み取る運用のため、
+    // 表示サイズを大きめに（モバイル 240px / デスクトップ 280px）し、
+    // 解像度劣化を防ぐため生成サイズは 320px とする。
+    QRCode.toDataURL(orderNo, { width: 320, margin: 2 }).then(setQrDataUrl);
   }, [orderNo]);
 
   useEffect(() => {
@@ -42,11 +45,15 @@ export default function Completion({ tour, selectedDate, timeSlot, ticketCount, 
       <h2 className="text-2xl font-bold text-gray-800 mb-2">予約が完了しました！</h2>
       <p className="text-gray-500 mb-6">QRコード付きのメールをお送りしました</p>
 
-      {/* QR Code */}
+      {/* QR Code — モバイル 240px / デスクトップ 280px */}
       {qrDataUrl && (
         <div className="mb-6">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={qrDataUrl} alt="QRコード" className="mx-auto" width={200} height={200} />
+          <img
+            src={qrDataUrl}
+            alt="QRコード"
+            className="mx-auto w-60 h-60 md:w-72 md:h-72"
+          />
           <p className="text-sm text-gray-500 mt-2">受注番号: {orderNo}</p>
         </div>
       )}

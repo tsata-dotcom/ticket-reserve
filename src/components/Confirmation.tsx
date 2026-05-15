@@ -306,9 +306,9 @@ export default function Confirmation({ tour, selectedDate, timeSlot, ticketCount
           <span className="text-gray-500">お名前</span>
           <span className="font-bold">{displayName}</span>
         </div>
-        <div className="flex justify-between border-b border-gray-100 pb-3">
-          <span className="text-gray-500">メール</span>
-          <span className="font-bold text-sm">{displayEmail}</span>
+        <div className="flex justify-between gap-2 border-b border-gray-100 pb-3">
+          <span className="text-gray-500 flex-shrink-0">メール</span>
+          <span className="font-bold text-sm break-all text-right">{displayEmail}</span>
         </div>
         {displayPhone ? (
           <div className="flex justify-between">
@@ -374,11 +374,13 @@ export default function Confirmation({ tour, selectedDate, timeSlot, ticketCount
         <div className="mt-4 p-3 bg-red-50 text-red-600 rounded-lg text-sm">{error}</div>
       )}
 
-      {/* Action buttons */}
+      {/* Action buttons — モバイルでは text-base、md: 以上で text-lg。
+          「クレジットカードでお支払い」は長文なので flex-1 だと wrap するため
+          サイズを抑える。 */}
       <div className="mt-6 flex gap-3">
         <button
           onClick={onBack}
-          className="flex-1 py-3 border-2 border-gray-300 rounded-xl text-gray-600 font-bold text-lg hover:bg-gray-50 min-h-[48px]"
+          className="flex-1 py-3 border-2 border-gray-300 rounded-xl text-gray-600 font-bold text-base md:text-lg hover:bg-gray-50 min-h-[48px]"
         >
           ← 戻る
         </button>
@@ -386,7 +388,7 @@ export default function Confirmation({ tour, selectedDate, timeSlot, ticketCount
           <button
             onClick={handleFreeReserve}
             disabled={submitting || (!!policy && !agreed)}
-            className="flex-1 py-3 bg-green-600 text-white rounded-xl font-bold text-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed min-h-[48px]"
+            className="flex-1 py-3 bg-green-600 text-white rounded-xl font-bold text-base md:text-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed min-h-[48px]"
           >
             {submitting ? '予約中...' : '予約を確定する'}
           </button>
@@ -394,7 +396,7 @@ export default function Confirmation({ tour, selectedDate, timeSlot, ticketCount
           <button
             onClick={handlePaymentClick}
             disabled={submitting || (!!policy && !agreed)}
-            className="flex-1 py-3 bg-primary text-white rounded-xl font-bold text-lg hover:bg-primary-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed min-h-[48px]"
+            className="flex-1 py-3 bg-primary text-white rounded-xl font-bold text-sm md:text-lg hover:bg-primary-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed min-h-[48px] leading-tight"
           >
             {submitting ? '処理中...' : 'クレジットカードでお支払い'}
           </button>
@@ -424,14 +426,14 @@ export default function Confirmation({ tour, selectedDate, timeSlot, ticketCount
             <div className="mt-6 flex gap-3">
               <button
                 onClick={() => setShowConfirm(false)}
-                className="flex-1 py-2 border-2 border-gray-300 rounded-lg text-gray-600 font-bold hover:bg-gray-50"
+                className="flex-1 py-3 border-2 border-gray-300 rounded-lg text-gray-600 font-bold hover:bg-gray-50 min-h-[44px]"
               >
                 戻る
               </button>
               <button
                 onClick={handleProceedToPayment}
                 disabled={submitting}
-                className="flex-1 py-2 bg-primary text-white rounded-lg font-bold hover:bg-primary-dark disabled:opacity-50"
+                className="flex-1 py-3 bg-primary text-white rounded-lg font-bold hover:bg-primary-dark disabled:opacity-50 min-h-[44px] text-sm md:text-base leading-tight"
               >
                 {submitting ? '処理中...' : '同意して決済に進む'}
               </button>

@@ -343,18 +343,20 @@ function MyPageContent() {
                     </div>
                     <div className="text-sm text-gray-500 mb-2">{r.ticket_count}名 / ¥{r.total_amount.toLocaleString()}</div>
                     <PaymentInfoSection reservation={r} />
-                    <div className="flex items-center justify-between mt-3">
+                    {/* タップターゲットを 44px 以上にするため py-2 px-1 を付与。
+                        モバイルでは hover が効かないので押せる範囲が広いほど良い。 */}
+                    <div className="flex items-center justify-between mt-3 -mb-1">
                       <button
                         onClick={() => handleResendQr(r.id)}
                         disabled={resendingId === r.id}
-                        className="text-primary hover:text-primary-dark font-bold text-sm disabled:opacity-50"
+                        className="text-primary hover:text-primary-dark font-bold text-sm disabled:opacity-50 min-h-[44px] py-2 px-1"
                       >
                         {resendingId === r.id ? '送信中...' : 'QRメールを再送信'}
                       </button>
                       <button
                         onClick={() => openCancelDialog(r)}
                         disabled={cancellingId === r.id}
-                        className="text-red-500 hover:text-red-700 font-bold text-sm disabled:opacity-50"
+                        className="text-red-500 hover:text-red-700 font-bold text-sm disabled:opacity-50 min-h-[44px] py-2 px-1"
                       >
                         {cancellingId === r.id ? 'キャンセル中...' : 'キャンセル'}
                       </button>
@@ -413,14 +415,14 @@ function MyPageContent() {
                   <button
                     onClick={() => { setConfirmTarget(null); setConfirmPreview(null); }}
                     disabled={cancellingId === confirmTarget.id}
-                    className="flex-1 py-2 border-2 border-gray-300 rounded-lg text-gray-600 font-bold hover:bg-gray-50"
+                    className="flex-1 py-3 border-2 border-gray-300 rounded-lg text-gray-600 font-bold hover:bg-gray-50 min-h-[44px]"
                   >
                     戻る
                   </button>
                   <button
                     onClick={confirmCancel}
                     disabled={cancellingId === confirmTarget.id}
-                    className="flex-1 py-2 bg-red-600 text-white rounded-lg font-bold hover:bg-red-700 disabled:opacity-50"
+                    className="flex-1 py-3 bg-red-600 text-white rounded-lg font-bold hover:bg-red-700 disabled:opacity-50 min-h-[44px] text-sm md:text-base leading-tight"
                   >
                     {cancellingId === confirmTarget.id ? '処理中...' : '同意してキャンセルする'}
                   </button>
