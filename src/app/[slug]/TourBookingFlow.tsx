@@ -101,6 +101,7 @@ function TourFlow({ tour: initialTour }: TourBookingFlowProps) {
               <TourCard tour={tour} />
               <Calendar
                 tourSlug={tour.slug}
+                bookingRangeMode={tour.booking_range_mode}
                 onSelectDate={handleDateSelect}
                 selectedDate={selectedDate}
               />

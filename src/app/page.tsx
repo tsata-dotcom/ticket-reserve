@@ -100,6 +100,7 @@ function ReservationFlow() {
               {selectedTour && (
                 <Calendar
                   tourSlug={selectedTour.slug}
+                  bookingRangeMode={selectedTour.booking_range_mode}
                   onSelectDate={handleDateSelect}
                   selectedDate={selectedDate}
                 />

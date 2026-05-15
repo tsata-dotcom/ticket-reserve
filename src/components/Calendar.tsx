@@ -10,6 +10,10 @@ interface DayAvail {
 
 interface CalendarProps {
   tourSlug: string;
+  // 親から渡されるツアーの予約可能期間モード。absolute の場合、
+  // /api/availability のレスポンス到着前はデフォルトの相対範囲（今月）で
+  // 描画してしまうとちらつくため、初期描画をローディングに差し替える。
+  bookingRangeMode?: 'relative' | 'absolute' | null;
   onSelectDate: (date: string) => void;
   selectedDate: string | null;
 }
@@ -36,7 +40,7 @@ function StatusBadge({ label, status, remaining }: { label: string; status: stri
   );
 }
 
-export default function Calendar({ tourSlug, onSelectDate, selectedDate }: CalendarProps) {
+export default function Calendar({ tourSlug, bookingRangeMode, onSelectDate, selectedDate }: CalendarProps) {
   const [bookingRange, setBookingRange] = useState<BookingRangeResponse | null>(null);
   // 初期表示は今日の月。bookingRange 受信後、absolute モードかつ最小日が
   // 未来の月にある場合はその月にジャンプする。
@@ -128,6 +132,20 @@ export default function Calendar({ tourSlug, onSelectDate, selectedDate }: Calen
   const rangeLabel = isRangeValid
     ? `${minDate.getMonth() + 1}/${minDate.getDate()} 〜 ${maxDate.getMonth() + 1}/${maxDate.getDate()}`
     : '現在ご予約いただける日付はありません';
+
+  // absolute モードで /api/availability の初回レスポンスがまだ来ていない間は、
+  // デフォルトの相対範囲（今月）でカレンダーを描画するとちらついて未来月へ
+  // ジャンプする見た目になる。代わりにローディングだけを表示する。
+  if (bookingRangeMode === 'absolute' && !bookingRange) {
+    return (
+      <div className="animate-fade-in mt-6">
+        <h2 className="text-lg font-bold text-gray-800 mb-2 text-center">日付を選んでください</h2>
+        <div className="flex justify-center py-12">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="animate-fade-in mt-6">
