@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { getBookingDateRange } from '@/lib/types';
+import { BookingRangeConfig, getBookingDateRange } from '@/lib/types';
 
 interface DayAvail {
   AM: { remaining: number; status: string };
@@ -13,6 +13,9 @@ interface CalendarProps {
   onSelectDate: (date: string) => void;
   selectedDate: string | null;
 }
+
+// /api/availability の bookingRange レスポンス（types.ts の BookingRangeConfig と同形）
+type BookingRangeResponse = BookingRangeConfig;
 
 const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'];
 
@@ -34,14 +37,21 @@ function StatusBadge({ label, status, remaining }: { label: string; status: stri
 }
 
 export default function Calendar({ tourSlug, onSelectDate, selectedDate }: CalendarProps) {
-  const { minDate, maxDate } = useMemo(() => getBookingDateRange(), []);
-
-  const [currentMonth, setCurrentMonth] = useState(() => ({
-    year: minDate.getFullYear(),
-    month: minDate.getMonth() + 1,
-  }));
+  const [bookingRange, setBookingRange] = useState<BookingRangeResponse | null>(null);
+  // 初期表示は今日の月。bookingRange 受信後、absolute モードかつ最小日が
+  // 未来の月にある場合はその月にジャンプする。
+  const [currentMonth, setCurrentMonth] = useState(() => {
+    const now = new Date();
+    return { year: now.getFullYear(), month: now.getMonth() + 1 };
+  });
   const [availability, setAvailability] = useState<Record<string, DayAvail>>({});
   const [loading, setLoading] = useState(false);
+
+  // bookingRange が未取得のうちは従来動作（今日+2日〜今日+1ヶ月）として描画する。
+  const { minDate, maxDate } = useMemo(
+    () => getBookingDateRange(bookingRange ?? undefined),
+    [bookingRange]
+  );
 
   useEffect(() => {
     const fetchAvailability = async () => {
@@ -52,6 +62,9 @@ export default function Calendar({ tourSlug, onSelectDate, selectedDate }: Calen
         );
         const data = await res.json();
         setAvailability(data.availability || {});
+        if (data.bookingRange) {
+          setBookingRange(data.bookingRange as BookingRangeResponse);
+        }
       } catch {
         setAvailability({});
       }
@@ -59,6 +72,26 @@ export default function Calendar({ tourSlug, onSelectDate, selectedDate }: Calen
     };
     fetchAvailability();
   }, [currentMonth, tourSlug]);
+
+  // absolute モードで minDate が未来月にある場合は、初回受信時にその月へジャンプする。
+  // currentMonth=minDate の月に揃ったあとはこの分岐が立たないのでループしない。
+  useEffect(() => {
+    if (bookingRange?.mode !== 'absolute') return;
+    const targetYear = minDate.getFullYear();
+    const targetMonth = minDate.getMonth() + 1;
+    const ahead =
+      targetYear > currentMonth.year ||
+      (targetYear === currentMonth.year && targetMonth > currentMonth.month);
+    if (ahead) {
+      setCurrentMonth({ year: targetYear, month: targetMonth });
+    }
+  }, [bookingRange, minDate, currentMonth.year, currentMonth.month]);
+
+  // ツアー切替時は bookingRange を一度クリアして、前のツアーの範囲が
+  // 一瞬残るのを防ぐ。
+  useEffect(() => {
+    setBookingRange(null);
+  }, [tourSlug]);
 
   const firstDay = new Date(currentMonth.year, currentMonth.month - 1, 1);
   const lastDay = new Date(currentMonth.year, currentMonth.month, 0).getDate();
@@ -88,7 +121,13 @@ export default function Calendar({ tourSlug, onSelectDate, selectedDate }: Calen
     currentMonth.year > maxDate.getFullYear() ||
     (currentMonth.year === maxDate.getFullYear() && currentMonth.month >= maxDate.getMonth() + 1);
 
-  const rangeLabel = `${minDate.getMonth() + 1}/${minDate.getDate()} 〜 ${maxDate.getMonth() + 1}/${maxDate.getDate()}`;
+  // 開催期間とオフセット範囲の重なりが空（minDate > maxDate）になる場合は
+  // 現在予約不可とラベル表示する。relative モードで booking_start_date より
+  // 十分手前の日付に居る場合などに発生する。
+  const isRangeValid = minDate <= maxDate;
+  const rangeLabel = isRangeValid
+    ? `${minDate.getMonth() + 1}/${minDate.getDate()} 〜 ${maxDate.getMonth() + 1}/${maxDate.getDate()}`
+    : '現在ご予約いただける日付はありません';
 
   return (
     <div className="animate-fade-in mt-6">

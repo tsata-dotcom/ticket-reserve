@@ -57,6 +57,17 @@ export async function GET(request: NextRequest) {
       ? tourDefault
       : FALLBACK_CAPACITY;
 
+  // ステップ3.5: ツアーごとの予約可能期間モード
+  const tr = tourRecord as {
+    booking_range_mode?: 'relative' | 'absolute' | null;
+    booking_offset_start?: number | null;
+    booking_offset_end?: number | null;
+    booking_start_date?: string | null;
+    booking_end_date?: string | null;
+  } | null;
+  const bookingMode = tr?.booking_range_mode ?? null;
+  const isAbsolute = bookingMode === 'absolute';
+
   // reservations.tour_type は履歴上 slug (ticket-reserve 経由) と name (ticket-system 経由)
   // が混在しているため、両方を IN で拾う。
   const tourTypeValues = tourName
@@ -139,12 +150,15 @@ export async function GET(request: NextRequest) {
 
     const isHoliday = holidaySet.has(dateStr);
 
-    // 休業日 or is_active=false の行は閉鎖扱い。設定行が無く休業日でもなければ営業扱い。
-    const amClosed = isHoliday || (amSetting ? amSetting.is_active === false : false);
-    const pmClosed = isHoliday || (pmSetting ? pmSetting.is_active === false : false);
+    // 休業日 or is_active=false の行は閉鎖扱い。
+    // ステップ3.5: absolute モードでは time_slot_settings に行が無い日も閉鎖扱い
+    //   （プレオープン等の固定日イベント。FALLBACK_CAPACITY は適用しない）
+    // relative モードでは従来通り、設定行が無くても営業扱い（FALLBACK_CAPACITY を適用）。
+    const amClosed = isHoliday || (amSetting ? amSetting.is_active === false : isAbsolute);
+    const pmClosed = isHoliday || (pmSetting ? pmSetting.is_active === false : isAbsolute);
 
-    const amCapacity = amSetting?.capacity ?? tourDefaultCapacity;
-    const pmCapacity = pmSetting?.capacity ?? tourDefaultCapacity;
+    const amCapacity = amSetting?.capacity ?? (isAbsolute ? 0 : tourDefaultCapacity);
+    const pmCapacity = pmSetting?.capacity ?? (isAbsolute ? 0 : tourDefaultCapacity);
 
     const amReserved = (reservations || [])
       .filter(r => r.visit_date === dateStr && r.time_slot === 'AM')
@@ -171,5 +185,38 @@ export async function GET(request: NextRequest) {
     };
   }
 
-  return NextResponse.json({ availability });
+  // ステップ3.5: absolute モードは time_slot_settings に行がある日付一覧を全期間で返す。
+  // Calendar 側がこの一覧から最小日〜最大日（カレンダー表示範囲）を決める。
+  let absoluteDates: string[] | undefined;
+  if (isAbsolute) {
+    const { data: allSettings, error: allErr } = await supabase
+      .from('time_slot_settings')
+      .select('date, is_active')
+      .in('tour_type', settingsTourTypeKeys)
+      .eq('is_active', true);
+
+    if (allErr) {
+      console.error('[availability] absolute-dates fetch error:', allErr);
+    }
+
+    absoluteDates = Array.from(
+      new Set(
+        (allSettings ?? [])
+          .map(s => normalizeDateString(s.date))
+          .filter(d => d.length === 10)
+      )
+    ).sort();
+  }
+
+  return NextResponse.json({
+    availability,
+    bookingRange: {
+      mode: bookingMode,
+      offsetStart: tr?.booking_offset_start ?? null,
+      offsetEnd: tr?.booking_offset_end ?? null,
+      startDate: tr?.booking_start_date ?? null,
+      endDate: tr?.booking_end_date ?? null,
+      absoluteDates,
+    },
+  });
 }

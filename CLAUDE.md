@@ -151,3 +151,20 @@ export const revalidate = 0;
 - QRメール（`src/lib/qr-mail.ts`）は `tour_slug === 'karamuki-tour-preopen'` の場合のみ
   「プレオープン特典」セクションを本文に追加する
 - ツアーを追加する場合は tour_types に INSERT し、tour_slots にもコマ定義を追加する
+
+## 予約可能期間（2026/5 リファクタリング ステップ3.5）
+- 予約可能期間は tour_types の `booking_range_mode` で制御する
+- `mode='relative'`: `booking_offset_start` / `booking_offset_end` でオフセット計算し、
+  `booking_start_date` / `booking_end_date` の開催期間で制約する。
+  両方の重なりが予約可能範囲（例: 今日が7/10、offset 2〜30、開催 7/15〜2099-12-31 なら 7/15〜8/9）
+- `mode='absolute'`: `time_slot_settings` にその tour_type で行がある日（is_active=true）
+  のみが予約可能。`/api/availability` の FALLBACK_CAPACITY=20 は適用しない（行が無い日は closed）。
+  Calendar は time_slot_settings の最小日付の月から表示開始する。
+- `mode` が NULL または未設定の場合は従来の「今日+2日〜今日+1ヶ月」にフォールバック
+- `booking_end_date = 2099-12-31` は「実質無期限」を意味するマジックナンバー
+- 非開催日はツアーごとに `time_slot_settings` で `is_active=false` の行を入れて設定する
+- `src/lib/types.ts` の `getBookingDateRange()` / `isWithinBookingRange()` は
+  `BookingRangeConfig` を引数で受け取る。`toBookingRangeConfig(tourRecord, absoluteDates)`
+  でツアー行から組み立てる。
+- `/api/availability` は `bookingRange` をレスポンスに含める（mode / offsets / start_date /
+  end_date / absoluteDates）。Calendar はこれを使って表示範囲とラベルを決定する。

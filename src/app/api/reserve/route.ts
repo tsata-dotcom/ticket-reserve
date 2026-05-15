@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { isWithinBookingRange } from '@/lib/types';
+import { isWithinBookingRange, toBookingRangeConfig } from '@/lib/types';
 import { sendQrEmail } from '@/lib/qr-mail';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 
@@ -58,18 +58,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '時間帯の指定が不正です' }, { status: 400 });
     }
 
-    if (!isWithinBookingRange(visit_date)) {
-      return NextResponse.json(
-        { error: 'ご予約は2日後から1ヶ月先までの日付をお選びください' },
-        { status: 400 }
-      );
-    }
-
-    // tour_types からコース情報を取得（price/max_per_booking/has_first_visit_free/cancel_policy_*）
+    // tour_types からコース情報を取得（price/max_per_booking/has_first_visit_free/cancel_policy_*
+    // と、ステップ3.5 の予約可能期間モード列）
     const { data: tourRecord, error: tourFetchError } = await supabase
       .from('tour_types')
       .select(
-        'slug, name, price, max_per_booking, is_first_free, has_first_visit_free, is_active, cancel_policy_2days_rate, cancel_policy_1day_rate, cancel_policy_today_rate'
+        'slug, name, price, max_per_booking, is_first_free, has_first_visit_free, is_active, cancel_policy_2days_rate, cancel_policy_1day_rate, cancel_policy_today_rate, booking_range_mode, booking_offset_start, booking_offset_end, booking_start_date, booking_end_date'
       )
       .eq('slug', tour_type)
       .maybeSingle();
@@ -80,6 +74,34 @@ export async function POST(request: NextRequest) {
 
     if (!tourRecord || !tourRecord.is_active) {
       return NextResponse.json({ error: '指定された体験コースが見つかりません' }, { status: 400 });
+    }
+
+    // ステップ3.5: ツアーごとの予約可能期間モードで判定する。
+    //   - absolute: time_slot_settings にその日の有効行があれば OK
+    //   - relative: tour_types の offset/period から計算した範囲で判定
+    //   - null:     従来動作（今日+2日〜今日+1ヶ月）
+    let absoluteDates: string[] | undefined;
+    if (tourRecord.booking_range_mode === 'absolute') {
+      const tourTypeKeys = Array.from(new Set([tourRecord.slug, tourRecord.name].filter(Boolean) as string[]));
+      const { data: matchingSettings, error: settingsErr } = await supabaseAdmin
+        .from('time_slot_settings')
+        .select('date')
+        .in('tour_type', tourTypeKeys)
+        .eq('is_active', true)
+        .eq('date', visit_date)
+        .limit(1);
+      if (settingsErr) {
+        console.error('time_slot_settings fetch error:', settingsErr);
+      }
+      absoluteDates = (matchingSettings ?? []).length > 0 ? [visit_date] : [];
+    }
+
+    const bookingConfig = toBookingRangeConfig(tourRecord, absoluteDates);
+    if (!isWithinBookingRange(visit_date, bookingConfig)) {
+      return NextResponse.json(
+        { error: 'ご予約可能な期間外の日付です' },
+        { status: 400 }
+      );
     }
 
     const count = Math.max(1, Math.floor(Number(ticket_count)));
